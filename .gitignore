@@ -1,0 +1,7 @@
+/target
+.env
+*.env
+state/
+*.sqlite
+node_modules/
+dist/

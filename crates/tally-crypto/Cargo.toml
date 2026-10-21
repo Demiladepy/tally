@@ -1,0 +1,19 @@
+[package]
+name = "tally-crypto"
+version = "0.1.0"
+description = "Threshold exponential ElGamal on Pallas, ballot proofs, tally and clearing for Tally"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pasta_curves = { version = "0.6.1", default-features = false, features = ["alloc", "bits"] }
+blake2b_simd = { version = "1.0.5", default-features = false }
+rand_core = "0.6"
+serde = { version = "1", features = ["derive"] }
+hex = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"
+rand_chacha = "0.3"
