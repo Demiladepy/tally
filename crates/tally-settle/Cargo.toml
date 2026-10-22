@@ -34,3 +34,4 @@ zcash_protocol = "=0.11.0-pre.1"
 zip32 = "0.3"
 incrementalmerkletree = "0.9"
 rusqlite = "0.37"
+ureq = { version = "3", features = ["json"] }

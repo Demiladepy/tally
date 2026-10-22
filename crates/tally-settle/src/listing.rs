@@ -45,6 +45,9 @@ pub struct SaleTerms {
     pub carrier_action: usize,
     pub payout_action: usize,
     pub expiry_height: u32,
+    /// Present when the buyer is an auction winner claiming its item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim: Option<crate::auction::Claim>,
 }
 
 pub struct Carrier {

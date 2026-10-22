@@ -10,6 +10,7 @@
 //!
 //! The sale follows Zarrier's pattern (re-implemented, credited in README).
 
+mod auction;
 mod listing;
 mod wallet;
 
@@ -104,6 +105,9 @@ enum Cmd {
         receive_account: String,
         #[arg(long)]
         listing: PathBuf,
+        /// Auction bid record, to claim a won item.
+        #[arg(long)]
+        claim: Option<PathBuf>,
         #[arg(long)]
         out: PathBuf,
     },
@@ -117,6 +121,9 @@ enum Cmd {
         listing: PathBuf,
         #[arg(long)]
         input: PathBuf,
+        /// Auction log URL: require a valid win claim at the clearing price.
+        #[arg(long)]
+        auction_log: Option<String>,
         #[arg(long)]
         out: PathBuf,
     },
@@ -133,6 +140,123 @@ enum Cmd {
         collection_pk: String,
         #[arg(long)]
         listing: Option<PathBuf>,
+    },
+    /// Seller: open an auction on the bulletin (writes the private auction record).
+    AuctionCreate {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        record: PathBuf,
+        #[arg(long)]
+        committee: PathBuf,
+        #[arg(long)]
+        escrow_wallet: PathBuf,
+        #[arg(long)]
+        escrow_account: String,
+        #[arg(long)]
+        forfeit_account: String,
+        #[arg(long)]
+        supply: u64,
+        /// step_zat:levels, e.g. 100000:16 for 0.001 to 0.016 ZEC.
+        #[arg(long)]
+        ladder: String,
+        #[arg(long)]
+        bond_zat: u64,
+        /// Blocks until close.
+        #[arg(long)]
+        close_in: u32,
+        #[arg(long, default_value_t = 240)]
+        settle_window: u32,
+        #[arg(long, default_value_t = 5)]
+        min_batch: u64,
+        #[arg(long)]
+        bulletin: String,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Seller: freeze the log at its current head.
+    AuctionClose {
+        #[arg(long)]
+        auction: PathBuf,
+    },
+    /// Seller: publish a signed settlement for a winner.
+    SettlePost {
+        #[arg(long)]
+        auction: PathBuf,
+        #[arg(long)]
+        p: String,
+        #[arg(long)]
+        txid: String,
+    },
+    /// Send value_zat to a fresh address of each named account.
+    Fund {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        identity: PathBuf,
+        #[arg(long)]
+        payer: String,
+        #[arg(long, value_delimiter = ',')]
+        accounts: Vec<String>,
+        #[arg(long)]
+        value_zat: u64,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Bidder: seal a ballot, post it, and build the bond payment.
+    Bid {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        identity: PathBuf,
+        #[arg(long)]
+        account: String,
+        #[arg(long)]
+        bulletin: String,
+        #[arg(long)]
+        auction_id: String,
+        #[arg(long)]
+        max_price_zat: u64,
+        /// Private bid record (ballot key; never the amount).
+        #[arg(long)]
+        record: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Escrow: list this auction's bonds from the escrow account's memos.
+    ScanBonds {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        account: String,
+        #[arg(long)]
+        auction_id: String,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Escrow: refund bonds (forfeiting unsettled winners' bonds if asked).
+    Refund {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        identity: PathBuf,
+        #[arg(long)]
+        account: String,
+        #[arg(long)]
+        bulletin: String,
+        #[arg(long)]
+        bonds: PathBuf,
+        #[arg(long)]
+        forfeit_unsettled: bool,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Print the block hash at a height (from the wallet's synced chain).
+    BlockHash {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        height: u32,
     },
     /// Try to extract a transaction from a PCZT (expected to fail if half-signed).
     TryExtract {
@@ -166,10 +290,44 @@ fn main() -> Result<()> {
         Cmd::List { wallet, record, item, payout_account, price_zat, out } => {
             list(&wallet, &record, item, &payout_account, price_zat, &out)
         }
-        Cmd::SaleBuild { wallet, identity, payer, receive_account, listing, out } => {
-            sale_build(&wallet, &identity, &payer, &receive_account, &listing, &out)
+        Cmd::SaleBuild { wallet, identity, payer, receive_account, listing, claim, out } => {
+            sale_build(&wallet, &identity, &payer, &receive_account, &listing, claim.as_deref(), &out)
         }
-        Cmd::SaleAccept { wallet, identity, listing, input, out } => sale_accept(&wallet, &identity, &listing, &input, &out),
+        Cmd::SaleAccept { wallet, identity, listing, input, auction_log, out } => {
+            sale_accept(&wallet, &identity, &listing, &input, auction_log.as_deref(), &out)
+        }
+        Cmd::AuctionCreate {
+            wallet,
+            record,
+            committee,
+            escrow_wallet,
+            escrow_account,
+            forfeit_account,
+            supply,
+            ladder,
+            bond_zat,
+            close_in,
+            settle_window,
+            min_batch,
+            bulletin,
+            out,
+        } => auction::create(
+            &wallet, &record, &committee, &escrow_wallet, &escrow_account, &forfeit_account, supply, &ladder,
+            bond_zat, close_in, settle_window, min_batch, &bulletin, &out,
+        ),
+        Cmd::AuctionClose { auction } => auction::close(&auction),
+        Cmd::SettlePost { auction, p, txid } => auction::settle_post(&auction, &p, &txid),
+        Cmd::Fund { wallet, identity, payer, accounts, value_zat, out } => {
+            auction::fund(&wallet, &identity, &payer, &accounts, value_zat, &out)
+        }
+        Cmd::Bid { wallet, identity, account, bulletin, auction_id, max_price_zat, record, out } => {
+            auction::bid(&wallet, &identity, &account, &bulletin, &auction_id, max_price_zat, &record, &out)
+        }
+        Cmd::ScanBonds { wallet, account, auction_id, out } => auction::scan_bonds(&wallet, &account, &auction_id, &out),
+        Cmd::Refund { wallet, identity, account, bulletin, bonds, forfeit_unsettled, out } => {
+            auction::refund(&wallet, &identity, &account, &bulletin, &bonds, forfeit_unsettled, &out)
+        }
+        Cmd::BlockHash { wallet, height } => auction::block_hash(&wallet, height),
         Cmd::InspectItem { wallet, txid, action, collection_pk, listing } => {
             inspect_item(&wallet, &txid, action, &collection_pk, listing.as_deref())
         }
@@ -365,7 +523,15 @@ fn list(wallet: &Path, record: &Path, item: u32, payout_account: &str, price_zat
     Ok(())
 }
 
-fn sale_build(wallet: &Path, identity: &Path, payer: &str, receive_account: &str, listing: &Path, out: &Path) -> Result<()> {
+fn sale_build(
+    wallet: &Path,
+    identity: &Path,
+    payer: &str,
+    receive_account: &str,
+    listing: &Path,
+    claim: Option<&Path>,
+    out: &Path,
+) -> Result<()> {
     let l: Listing = serde_json::from_str(&fs::read_to_string(listing)?)?;
     let c = l.carrier().context("listing rejected")?;
     let payout = l.payout()?;
@@ -479,6 +645,7 @@ fn sale_build(wallet: &Path, identity: &Path, payer: &str, receive_account: &str
             carrier_action: ca,
             payout_action: pa,
             expiry_height: expiry,
+            claim: claim.map(|c| auction::make_claim(c, &l.hash()?)).transpose()?,
         };
         fs::write(out.with_extension("terms.json"), serde_json::to_string_pretty(&terms)?)?;
         println!("buyer-signed, redacted PCZT {} (expires at height {expiry})", out.display());
@@ -487,12 +654,17 @@ fn sale_build(wallet: &Path, identity: &Path, payer: &str, receive_account: &str
     bail!("could not bind carrier spend and successor after {MAX_BIND_TRIES} tries")
 }
 
-fn sale_accept(wallet: &Path, identity: &Path, listing: &Path, input: &Path, out: &Path) -> Result<()> {
+fn sale_accept(wallet: &Path, identity: &Path, listing: &Path, input: &Path, auction_log: Option<&str>, out: &Path) -> Result<()> {
     let l: Listing = serde_json::from_str(&fs::read_to_string(listing)?)?;
     let terms: SaleTerms = serde_json::from_str(&fs::read_to_string(input.with_extension("terms.json"))?)
         .context("read sale terms")?;
     if terms.listing_hash != l.hash()? {
         bail!("terms refer to a different listing");
+    }
+    if let Some(url) = auction_log {
+        let log: tally_crypto::auction::AuctionLog = ureq::get(url).call()?.body_mut().read_json()?;
+        let claim = terms.claim.as_ref().ok_or_else(|| anyhow!("auction sale requires a win claim"))?;
+        auction::check_claim(&log, claim, &terms.listing_hash, l.price_zat)?;
     }
     let c = l.carrier()?;
     let payout = l.payout()?;
