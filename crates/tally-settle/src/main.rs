@@ -93,6 +93,20 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Check a received carrier note: zero value, Tally memo, seller signature,
+    /// and (with --terms) that its rho is the nullifier of the note it replaced.
+    InspectItem {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        txid: String,
+        #[arg(long)]
+        action: u32,
+        #[arg(long)]
+        record: PathBuf,
+        #[arg(long)]
+        terms: Option<PathBuf>,
+    },
     /// Try to extract a transaction from a PCZT (expected to fail if half-signed).
     TryExtract {
         #[arg(long)]
@@ -141,6 +155,7 @@ fn main() -> Result<()> {
         Cmd::SaleAccept { seller_wallet, seller_identity, input, out } => {
             sale_accept(seller_wallet, seller_identity, input, out)
         }
+        Cmd::InspectItem { wallet, txid, action, record, terms } => inspect_item(wallet, txid, action, record, terms),
         Cmd::TryExtract { input } => {
             let p = Pczt::parse(&fs::read(&input)?).map_err(|e| anyhow!("parse: {e:?}"))?;
             let extracted = SpendFinalizer::new(p)
@@ -148,7 +163,22 @@ fn main() -> Result<()> {
                 .map_err(|e| anyhow!("{e:?}"))
                 .and_then(|p| TransactionExtractor::new(p).extract(UnwrapErr(SysRng)).map_err(|e| anyhow!("{e:?}")));
             match extracted {
-                Ok(tx) => println!("EXTRACTED {}", tx.txid()),
+                Ok(tx) => {
+                    let mut raw = vec![];
+                    tx.write(&mut raw)?;
+                    fs::write(input.with_extension("tx.hex"), hex::encode(raw))?;
+                    println!("EXTRACTED {}", tx.txid());
+                    // Everything a public observer can see, by pool.
+                    println!("  version          {:?}", tx.version());
+                    println!("  transparent      {}", if tx.transparent_bundle().is_some() { "PRESENT" } else { "none" });
+                    println!("  sprout           {}", if tx.sprout_bundle().is_some() { "PRESENT" } else { "none" });
+                    println!("  sapling          {}", if tx.sapling_bundle().is_some() { "PRESENT" } else { "none" });
+                    println!("  orchard          {}", if tx.orchard_bundle().is_some() { "PRESENT" } else { "none" });
+                    if let Some(b) = tx.ironwood_bundle() {
+                        println!("  ironwood actions {}", b.actions().len());
+                        println!("  ironwood balance {} zat (public: the fee leaving the pool)", i64::from(*b.value_balance()));
+                    }
+                }
                 Err(e) => println!("REFUSED {e}"),
             }
             Ok(())
@@ -431,5 +461,30 @@ fn sale_accept(seller_wallet: PathBuf, seller_identity: PathBuf, input: PathBuf,
     s.sign_ironwood(rng(), terms.carrier_action, &keys.ask).map_err(|e| anyhow!("sign: {e:?}"))?;
     write_pczt(s.finish(), &out)?;
     println!("seller-signed PCZT {}; broadcast with zcash-devtool pczt send", out.display());
+    Ok(())
+}
+
+fn inspect_item(wallet: PathBuf, txid: String, action: u32, record: PathBuf, terms: Option<PathBuf>) -> Result<()> {
+    let rec: MintRecord = serde_json::from_str(&fs::read_to_string(&record)?)?;
+    let w = Wallet::open(&wallet)?;
+    let (target, _) = w.heights()?;
+    let txid = TxId::from_hex(&txid).ok_or_else(|| anyhow!("bad txid"))?;
+    let n = w.note(txid, action, target)?;
+    let note = n.note();
+    let memo_bytes = w
+        .memo(txid, action)?
+        .ok_or_else(|| anyhow!("no memo stored for this note"))?;
+    let item = Item::decode(&memo_bytes).map_err(|e| anyhow!("{e}"))?;
+    let pk = tally_crypto::codec::point_from_hex(&rec.collection_pk).map_err(|e| anyhow!("{e}"))?;
+    println!("value_zat      {}", note.value().inner());
+    println!("collection     {}", hex::encode(item.collection_id));
+    println!("item_index     {}", item.item_index);
+    println!("hop            {}", item.hop);
+    println!("collection_ok  {}", hex::encode(item.collection_id) == rec.collection_id);
+    println!("seller_sig_ok  {}", item.verify_seller(&pk).is_ok());
+    if let Some(t) = terms {
+        let t: SaleTerms = serde_json::from_str(&fs::read_to_string(t)?)?;
+        println!("rho==prev_nf   {}", hex::encode(note.rho().to_bytes()) == t.carrier_nullifier);
+    }
     Ok(())
 }

@@ -152,6 +152,17 @@ impl Wallet {
     }
 }
 
+impl Wallet {
+    /// The raw 512-byte memo of one of our received notes.
+    pub fn memo(&self, txid: TxId, action: u32) -> Result<Option<[u8; 512]>> {
+        let id = zcash_client_backend::wallet::NoteId::new(txid, ShieldedPool::Ironwood, action as u16);
+        Ok(self
+            .db
+            .get_memo(id)?
+            .map(|m| *zcash_protocol::memo::MemoBytes::from(&m).as_array()))
+    }
+}
+
 /// A fresh receiving address for this account: a random diversifier, so no
 /// address is reused. (Diversified addresses share an IVK; see THREAT_MODEL.)
 pub fn fresh_address(fvk: &FullViewingKey, scope: Scope) -> orchard::Address {
