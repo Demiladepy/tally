@@ -5,3 +5,6 @@ state/
 *.sqlite
 node_modules/
 dist/
+bulletin-data/
+bulletin.key
+runs/

@@ -8,6 +8,10 @@ use pasta_curves::group::GroupEncoding;
 
 use crate::{Error, Point, Scalar};
 
+pub fn point_to_bytes(p: &Point) -> [u8; 32] {
+    p.to_bytes()
+}
+
 pub fn point_to_hex(p: &Point) -> String {
     hex::encode(p.to_bytes())
 }

@@ -1,0 +1,23 @@
+[package]
+name = "tally-bulletin"
+version = "0.1.0"
+description = "Append-only bulletin log for Tally ballots, with signed inclusion receipts"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+tally-crypto = { path = "../../crates/tally-crypto" }
+anyhow = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "fs", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[dev-dependencies]
+rand_chacha = "0.3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

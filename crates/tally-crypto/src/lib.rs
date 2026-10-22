@@ -13,6 +13,7 @@ pub mod elgamal;
 pub mod error;
 pub mod hash;
 pub mod log;
+pub mod manifest;
 pub mod proofs;
 pub mod schnorr;
 pub mod threshold;
