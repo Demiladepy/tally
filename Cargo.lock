@@ -313,6 +313,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tally-zcash"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "rand_chacha",
+ "rand_core 0.6.4",
+ "tally-crypto",
+ "thiserror",
+]
+
+[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

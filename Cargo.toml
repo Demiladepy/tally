@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/tally-crypto"]
+members = ["crates/tally-crypto", "crates/tally-zcash"]
 
 [workspace.package]
 edition = "2021"
