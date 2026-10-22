@@ -1,4 +1,5 @@
-//! Bulletin API: honest flow, every rejection path, and reload from disk.
+//! Bulletin API: a whole auction through HTTP, every rejection path, the
+//! public verifier going green, and reload from disk.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -6,13 +7,15 @@ use axum::Router;
 use http_body_util::BodyExt;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use serde::Serialize;
 use serde_json::Value;
-use tally_bulletin::{AuctionLog, Bulletin};
+use tally_bulletin::Bulletin;
+use tally_crypto::auction::{self, AuctionLog, AuctionResult, BondAttestation, Outcome, Settlement};
 use tally_crypto::ballot::Ballot;
 use tally_crypto::manifest::{Close, Committee, Manifest, Receipt};
 use tally_crypto::schnorr::Signature;
 use tally_crypto::threshold;
-use tally_crypto::{clearing, dkg, g, random_scalar, Point, Scalar};
+use tally_crypto::{dkg, g, random_scalar, Point, Scalar};
 use tower::ServiceExt;
 
 const L: usize = 16;
@@ -26,7 +29,7 @@ struct Fixture {
     id: String,
 }
 
-fn fixture(seed: u64) -> (Fixture, Bulletin) {
+fn fixture(seed: u64, supply: u64, min_batch: u64) -> (Fixture, Bulletin) {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let dealings: Vec<_> = (1..=3).map(|i| dkg::deal(i, 3, 2, &mut rng).unwrap()).collect();
     let key = dkg::committee_key(3, 2, &dealings.iter().map(|d| d.commitments.clone()).collect::<Vec<_>>()).unwrap();
@@ -41,13 +44,13 @@ fn fixture(seed: u64) -> (Fixture, Bulletin) {
         v: 1,
         auction_id: [seed as u8; 32],
         collection_id: [2; 32],
-        supply: 2,
-        ladder_zat: (0..L as u64).map(|i| 50_000_000 + i * 10_000_000).collect(),
-        bond_zat: 1_000_000,
+        supply,
+        ladder_zat: (1..=L as u64).map(|i| i * 100_000).collect(),
+        bond_zat: 100_000,
         open_height: 100,
         close_height: 200,
         settle_window_blocks: 100,
-        min_batch: 3,
+        min_batch,
         committee: Committee { key, members: vec!["a".into(), "b".into(), "c".into()] },
         escrow_ua: "utest1escrow".into(),
         forfeit_ua: "utest1forfeit".into(),
@@ -74,26 +77,66 @@ async fn call(app: &Router, method: &str, uri: &str, body: Option<String>) -> (S
     (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
 }
 
+async fn post<T: Serialize>(app: &Router, uri: &str, v: &T) -> StatusCode {
+    call(app, "POST", uri, Some(serde_json::to_string(v).unwrap())).await.0
+}
+
+async fn get_log(app: &Router, id: &str) -> AuctionLog {
+    serde_json::from_value(call(app, "GET", &format!("/v1/auctions/{id}"), None).await.1).unwrap()
+}
+
 fn ballot(f: &mut Fixture, yes: usize) -> Ballot {
     Ballot::build(f.manifest.auction_id, &f.manifest.committee.key.h, L, yes, &mut f.rng).unwrap().0
 }
 
+fn attest(f: &mut Fixture, root: [u8; 32], bonded: &[u64], members: &[u32]) -> BondAttestation {
+    let sigs = members
+        .iter()
+        .map(|&j| BondAttestation::sign_member(&f.manifest.auction_id, &root, bonded, j, &f.member_sks[j as usize - 1], &mut f.rng))
+        .collect();
+    BondAttestation { auction_id: f.manifest.auction_id, root, bonded: bonded.to_vec(), sigs }
+}
+
+fn decrypt(f: &mut Fixture, log: &AuctionLog, target: &str) -> threshold::DecryptionRecord {
+    let ct = log.target_ciphertext(target).unwrap();
+    let shares = [1u32, 3]
+        .iter()
+        .map(|&j| threshold::make_share(target, j, &f.member_sks[j as usize - 1], &ct, &mut f.rng))
+        .collect();
+    threshold::decrypt(target, &f.manifest.committee.key, &ct, shares, log.entries.len() as u64).unwrap()
+}
+
+/// Drive clearing exactly as the committee coordinator does.
+async fn clear(f: &mut Fixture, app: &Router) -> AuctionLog {
+    let dec_url = format!("/v1/auctions/{}/decryptions", f.id);
+    loop {
+        let log = get_log(app, &f.id).await;
+        let next = log.next_targets().unwrap();
+        if next.is_empty() {
+            return log;
+        }
+        for t in next {
+            let rec = decrypt(f, &log, &t);
+            assert_eq!(post(app, &dec_url, &rec).await, StatusCode::OK, "{t}");
+        }
+    }
+}
+
 #[tokio::test]
-async fn full_flow_and_rejections() {
-    let (mut f, b) = fixture(1);
+async fn whole_auction_and_rejections() {
+    let (mut f, b) = fixture(1, 2, 3);
     let app = b.router();
-    let m = serde_json::to_string(&f.manifest).unwrap();
-    assert_eq!(call(&app, "POST", "/v1/auctions", Some(m.clone())).await.0, StatusCode::OK);
-    // Idempotent for the same manifest; a different one under the same id is refused.
-    assert_eq!(call(&app, "POST", "/v1/auctions", Some(m)).await.0, StatusCode::OK);
+    assert_eq!(post(&app, "/v1/auctions", &f.manifest).await, StatusCode::OK);
+    assert_eq!(post(&app, "/v1/auctions", &f.manifest).await, StatusCode::OK, "idempotent");
     let mut other = f.manifest.clone();
     other.supply = 3;
     other.sign(&f.seller_sk, &mut f.rng);
-    assert_eq!(call(&app, "POST", "/v1/auctions", Some(serde_json::to_string(&other).unwrap())).await.0, StatusCode::CONFLICT);
+    assert_eq!(post(&app, "/v1/auctions", &other).await, StatusCode::CONFLICT);
 
+    // Six bidders; entry 5 never pays a bond and must not count.
     let url = format!("/v1/auctions/{}/ballots", f.id);
     let mut ballots = vec![];
-    for (i, yes) in [3usize, 9, 9, 12].into_iter().enumerate() {
+    for (i, yes) in [3usize, 9, 9, 12, 5, 16].into_iter().enumerate() {
         let bl = ballot(&mut f, yes);
         let (s, v) = call(&app, "POST", &url, Some(serde_json::to_string(&bl).unwrap())).await;
         assert_eq!(s, StatusCode::OK);
@@ -103,87 +146,150 @@ async fn full_flow_and_rejections() {
         ballots.push(bl);
     }
 
-    // Same ballot key twice.
-    let dup = serde_json::to_string(&ballots[0]).unwrap();
-    assert_eq!(call(&app, "POST", &url, Some(dup)).await.0, StatusCode::CONFLICT);
-    // Invalid proofs (non-monotone vector).
+    assert_eq!(post(&app, &url, &ballots[0]).await, StatusCode::CONFLICT, "same ballot key twice");
     let mut v = vec![1u64; 3];
     v.extend([0, 1]);
     v.resize(L, 0);
     let (forged, _) = Ballot::build_from_values(f.manifest.auction_id, &f.manifest.committee.key.h, &v, &mut f.rng);
-    assert_eq!(call(&app, "POST", &url, Some(serde_json::to_string(&forged).unwrap())).await.0, StatusCode::BAD_REQUEST);
-    // Ballot for another auction.
+    assert_eq!(post(&app, &url, &forged).await, StatusCode::BAD_REQUEST, "non-monotone");
     let (alien, _) = Ballot::build([9; 32], &f.manifest.committee.key.h, L, 2, &mut f.rng).unwrap();
-    assert_eq!(call(&app, "POST", &url, Some(serde_json::to_string(&alien).unwrap())).await.0, StatusCode::BAD_REQUEST);
-    // Garbage and oversize bodies.
+    assert_eq!(post(&app, &url, &alien).await, StatusCode::BAD_REQUEST, "other auction");
     assert!(call(&app, "POST", &url, Some("{\"v\":1}".into())).await.0.is_client_error());
     assert!(call(&app, "POST", &url, Some("x".repeat(70_000))).await.0.is_client_error());
 
-    // Decryption before close is refused.
-    let dec_url = format!("/v1/auctions/{}/decryptions", f.id);
-    let totals = clearing::tally(&ballots, L);
-    let rec = decrypt(&mut f, "T_9", &totals[8], 4);
-    assert_eq!(call(&app, "POST", &dec_url, Some(serde_json::to_string(&rec).unwrap())).await.0, StatusCode::CONFLICT);
-
-    // Close: wrong root refused, wrong signer refused, correct one accepted.
-    let (_, logv) = call(&app, "GET", &format!("/v1/auctions/{}", f.id), None).await;
-    let log: AuctionLog = serde_json::from_value(logv).unwrap();
-    let root = log.head();
-    assert_eq!(root, tally_crypto::log::root(&f.manifest.auction_id, ballots.iter().map(|b| b.body_hash()).collect::<Vec<_>>().iter()));
+    // Close: wrong root, wrong signer, then the real one.
+    let root = get_log(&app, &f.id).await.head();
     let close_url = format!("/v1/auctions/{}/close", f.id);
-    let bad_root = Close::sign(&f.seller_sk, f.manifest.auction_id, 4, [0; 32], &mut f.rng);
-    assert_eq!(call(&app, "POST", &close_url, Some(serde_json::to_string(&bad_root).unwrap())).await.0, StatusCode::CONFLICT);
+    assert_eq!(post(&app, &close_url, &Close::sign(&f.seller_sk, f.manifest.auction_id, 6, [0; 32], &mut f.rng)).await, StatusCode::CONFLICT);
     let impostor = random_scalar(&mut f.rng);
-    let bad_sig = Close::sign(&impostor, f.manifest.auction_id, 4, root, &mut f.rng);
-    assert_eq!(call(&app, "POST", &close_url, Some(serde_json::to_string(&bad_sig).unwrap())).await.0, StatusCode::BAD_REQUEST);
-    let ok = Close::sign(&f.seller_sk, f.manifest.auction_id, 4, root, &mut f.rng);
-    assert_eq!(call(&app, "POST", &close_url, Some(serde_json::to_string(&ok).unwrap())).await.0, StatusCode::OK);
+    assert_eq!(post(&app, &close_url, &Close::sign(&impostor, f.manifest.auction_id, 6, root, &mut f.rng)).await, StatusCode::BAD_REQUEST);
+    assert_eq!(post(&app, &close_url, &Close::sign(&f.seller_sk, f.manifest.auction_id, 6, root, &mut f.rng)).await, StatusCode::OK);
+    assert_eq!(post(&app, &url, &ballot(&mut f, 5)).await, StatusCode::CONFLICT, "no ballots after close");
 
-    // No ballots after close.
-    let late = ballot(&mut f, 5);
-    assert_eq!(call(&app, "POST", &url, Some(serde_json::to_string(&late).unwrap())).await.0, StatusCode::CONFLICT);
+    // Nothing can be decrypted before the bonded set is attested.
+    let dec_url = format!("/v1/auctions/{}/decryptions", f.id);
+    let log = get_log(&app, &f.id).await;
+    let mut early = log.clone();
+    early.bonds = Some(attest(&mut f, root, &[0, 1, 2, 3, 5], &[1, 3]));
+    let early_rec = decrypt(&mut f, &early, "T_8");
+    assert_eq!(post(&app, &dec_url, &early_rec).await, StatusCode::CONFLICT);
 
-    // Decryptions: the right T_k is accepted once; a record whose ciphertext
-    // isn't the named target, a forged m, or a repeat is refused.
-    assert_eq!(rec.m, 3);
-    assert_eq!(call(&app, "POST", &dec_url, Some(serde_json::to_string(&rec).unwrap())).await.0, StatusCode::OK);
-    assert_eq!(call(&app, "POST", &dec_url, Some(serde_json::to_string(&rec).unwrap())).await.0, StatusCode::CONFLICT);
-    let wrong = decrypt(&mut f, "T_2", &totals[8], 4);
-    assert_eq!(call(&app, "POST", &dec_url, Some(serde_json::to_string(&wrong).unwrap())).await.0, StatusCode::BAD_REQUEST);
-    let mut lie = decrypt(&mut f, "T_3", &totals[2], 4);
+    // Bond attestation: one signature is not a quorum; a wrong root is refused.
+    let bonds_url = format!("/v1/auctions/{}/bonds", f.id);
+    let bonded = [0u64, 1, 2, 3, 5];
+    assert_eq!(post(&app, &bonds_url, &attest(&mut f, root, &bonded, &[2])).await, StatusCode::BAD_REQUEST);
+    assert_eq!(post(&app, &bonds_url, &attest(&mut f, [1; 32], &bonded, &[1, 2])).await, StatusCode::BAD_REQUEST);
+    assert_eq!(post(&app, &bonds_url, &attest(&mut f, root, &bonded, &[1, 2])).await, StatusCode::OK);
+
+    // A target the binary search doesn't need yet is refused.
+    let log = get_log(&app, &f.id).await;
+    let want = log.next_targets().unwrap();
+    assert_eq!(want, vec!["T_8".to_string()], "first probe of the search over 16 levels");
+    let premature = decrypt(&mut f, &log, "T_2");
+    assert_eq!(post(&app, &dec_url, &premature).await, StatusCode::CONFLICT);
+    let mut lie = decrypt(&mut f, &log, "T_8");
     lie.m += 1;
-    assert_eq!(call(&app, "POST", &dec_url, Some(serde_json::to_string(&lie).unwrap())).await.0, StatusCode::BAD_REQUEST);
-    let p_hex = tally_crypto::codec::point_to_hex(&ballots[1].p);
-    let cell = decrypt(&mut f, &format!("ballot:{p_hex}:9"), &ballots[1].c[8], 1);
-    assert_eq!(cell.m, 1);
-    assert_eq!(call(&app, "POST", &dec_url, Some(serde_json::to_string(&cell).unwrap())).await.0, StatusCode::OK);
+    assert_eq!(post(&app, &dec_url, &lie).await, StatusCode::BAD_REQUEST);
+
+    let log = clear(&mut f, &app).await;
+    // Bonded maxes are 3, 9, 9, 12, 16 with supply 2: T_12 = 2, T_13 = 1.
+    let r = log.compute_result([5; 32]).unwrap();
+    assert_eq!(r.outcome, Outcome::Cleared);
+    assert_eq!(r.k_star, 12);
+    assert_eq!(r.price_zat, Some(1_200_000));
+    assert_eq!(r.winners.len(), 2);
+    assert!(r.winners.contains(&ballots[3].p) && r.winners.contains(&ballots[5].p));
+    assert!(!r.winners.contains(&ballots[4].p), "unbonded ballot never counts");
+    assert!(r.totals.len() <= 5, "decrypted {} totals", r.totals.len());
+
+    let result_url = format!("/v1/auctions/{}/result", f.id);
+    let mut fake = r.clone();
+    fake.price_zat = Some(100_000);
+    assert_eq!(post(&app, &result_url, &fake).await, StatusCode::BAD_REQUEST);
+    assert_eq!(post(&app, &result_url, &r).await, StatusCode::OK);
+
+    let settle_url = format!("/v1/auctions/{}/settlements", f.id);
+    let loser = Settlement::sign(&f.seller_sk, &f.manifest.auction_id, ballots[0].p, "aa".into(), &mut f.rng);
+    assert_eq!(post(&app, &settle_url, &loser).await, StatusCode::BAD_REQUEST);
+    let forged = Settlement::sign(&impostor, &f.manifest.auction_id, r.winners[0], "bb".into(), &mut f.rng);
+    assert_eq!(post(&app, &settle_url, &forged).await, StatusCode::BAD_REQUEST);
+    for (i, w) in r.winners.iter().enumerate() {
+        let s = Settlement::sign(&f.seller_sk, &f.manifest.auction_id, *w, format!("{i:064x}"), &mut f.rng);
+        assert_eq!(post(&app, &settle_url, &s).await, StatusCode::OK);
+    }
+
+    let log = get_log(&app, &f.id).await;
+    let checks = auction::verify(&log);
+    for c in &checks {
+        assert!(c.ok, "{}: {}", c.name, c.detail);
+    }
+    assert_eq!(checks.len(), 10);
+
+    // Tampering with the served record turns the page red.
+    let mut t = log.clone();
+    t.result.as_mut().unwrap().winners.swap(0, 1);
+    t.result.as_mut().unwrap().price_zat = Some(1_100_000);
+    assert!(auction::verify(&t).iter().any(|c| !c.ok));
+    let mut t = log.clone();
+    t.entries[2].ballot.c[0] = t.entries[1].ballot.c[0];
+    assert!(auction::verify(&t).iter().any(|c| !c.ok));
 }
 
-fn decrypt(f: &mut Fixture, target: &str, ct: &tally_crypto::elgamal::Ciphertext, max: u64) -> threshold::DecryptionRecord {
-    let shares = [1u32, 3]
-        .iter()
-        .map(|&j| threshold::make_share(target, j, &f.member_sks[j as usize - 1], ct, &mut f.rng))
-        .collect();
-    threshold::decrypt(target, &f.manifest.committee.key, ct, shares, max).unwrap()
+#[tokio::test]
+async fn undersubscribed_and_void() {
+    // Undersubscribed: 3 bonded ballots, supply 5: everyone wins at p_1, no cells opened.
+    let (mut f, b) = fixture(3, 5, 3);
+    let app = b.router();
+    post(&app, "/v1/auctions", &f.manifest).await;
+    for yes in [2, 7, 16] {
+        let bl = ballot(&mut f, yes);
+        post(&app, &format!("/v1/auctions/{}/ballots", f.id), &bl).await;
+    }
+    let root = get_log(&app, &f.id).await.head();
+    post(&app, &format!("/v1/auctions/{}/close", f.id), &Close::sign(&f.seller_sk, f.manifest.auction_id, 3, root, &mut f.rng)).await;
+    post(&app, &format!("/v1/auctions/{}/bonds", f.id), &attest(&mut f, root, &[0, 1, 2], &[1, 3])).await;
+    let log = clear(&mut f, &app).await;
+    let r: AuctionResult = log.compute_result([0; 32]).unwrap();
+    assert_eq!(r.outcome, Outcome::Undersubscribed);
+    assert_eq!(r.price_zat, Some(100_000));
+    assert_eq!(r.winners.len(), 3);
+    assert!(log.decryptions.iter().all(|d| d.target.starts_with("T_")), "no cell decrypted");
+
+    // Void: 2 bonded < min_batch 3, so nothing at all is decrypted.
+    let (mut f, b) = fixture(4, 1, 3);
+    let app = b.router();
+    post(&app, "/v1/auctions", &f.manifest).await;
+    for yes in [4, 9] {
+        let bl = ballot(&mut f, yes);
+        post(&app, &format!("/v1/auctions/{}/ballots", f.id), &bl).await;
+    }
+    let root = get_log(&app, &f.id).await.head();
+    post(&app, &format!("/v1/auctions/{}/close", f.id), &Close::sign(&f.seller_sk, f.manifest.auction_id, 2, root, &mut f.rng)).await;
+    post(&app, &format!("/v1/auctions/{}/bonds", f.id), &attest(&mut f, root, &[0, 1], &[2, 3])).await;
+    let log = get_log(&app, &f.id).await;
+    assert!(log.next_targets().unwrap().is_empty());
+    let r = log.compute_result([0; 32]).unwrap();
+    assert_eq!(r.outcome, Outcome::Void);
+    assert_eq!(post(&app, &format!("/v1/auctions/{}/result", f.id), &r).await, StatusCode::OK);
+    let log = get_log(&app, &f.id).await;
+    assert!(auction::verify(&log).iter().all(|c| c.ok));
 }
 
 #[tokio::test]
 async fn persists_and_reloads() {
     let dir = std::env::temp_dir().join(format!("tally-bulletin-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let (mut f, _) = fixture(2);
+    let (mut f, _) = fixture(2, 2, 3);
     let bsk = random_scalar(&mut f.rng);
     let app = Bulletin::new(bsk, Some(dir.clone())).unwrap().router();
-    call(&app, "POST", "/v1/auctions", Some(serde_json::to_string(&f.manifest).unwrap())).await;
+    post(&app, "/v1/auctions", &f.manifest).await;
     let bl = ballot(&mut f, 4);
     let url = format!("/v1/auctions/{}/ballots", f.id);
-    assert_eq!(call(&app, "POST", &url, Some(serde_json::to_string(&bl).unwrap())).await.0, StatusCode::OK);
+    assert_eq!(post(&app, &url, &bl).await, StatusCode::OK);
 
     // A restarted bulletin keeps the log and still refuses the duplicate.
     let app2 = Bulletin::new(bsk, Some(dir.clone())).unwrap().router();
-    let (s, v) = call(&app2, "GET", &format!("/v1/auctions/{}", f.id), None).await;
-    assert_eq!(s, StatusCode::OK);
-    assert_eq!(v["entries"].as_array().unwrap().len(), 1);
-    assert_eq!(call(&app2, "POST", &url, Some(serde_json::to_string(&bl).unwrap())).await.0, StatusCode::CONFLICT);
+    assert_eq!(get_log(&app2, &f.id).await.entries.len(), 1);
+    assert_eq!(post(&app2, &url, &bl).await, StatusCode::CONFLICT);
     let _ = std::fs::remove_dir_all(&dir);
 }

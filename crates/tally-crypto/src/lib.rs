@@ -5,6 +5,7 @@
 //! Nothing here touches the network or logs anything. Plaintext bids only
 //! ever exist as the `max_level` argument to [`ballot::Ballot::build`].
 
+pub mod auction;
 pub mod ballot;
 pub mod clearing;
 pub mod codec;

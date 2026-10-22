@@ -13,9 +13,14 @@
 //! * Each append returns a receipt signed by the bulletin key. A bidder whose
 //!   receipted entry is missing from the final log can prove censorship.
 //! * Only the seller can close, and only at the exact (count, root).
-//! * A decryption record is accepted only after close, only if its
-//!   ciphertext is the recomputed tally T_k or ballot cell it names, and only
-//!   if at least t shares verify.
+//! * The bonded set is accepted only after close, with ≥ t committee
+//!   member signatures over the final root.
+//! * A decryption record is accepted only after the bonded set, only if its
+//!   ciphertext is the recomputed tally T_k or bonded ballot cell it names,
+//!   only if at least t shares verify, and only if clearing still needs that
+//!   target (`next_targets`), so nothing beyond the binary search is opened.
+//! * A result is accepted only if it recomputes exactly from the log.
+//! * A settlement is accepted only if the seller signed it for a winner.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -25,9 +30,9 @@ use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use tally_crypto::auction::{AuctionLog, AuctionResult, BondAttestation, Entry, Settlement};
 use tally_crypto::ballot::Ballot;
-use tally_crypto::clearing;
 use tally_crypto::codec;
 use tally_crypto::manifest::{Close, Manifest, Receipt};
 use tally_crypto::threshold::{self, DecryptionRecord};
@@ -36,36 +41,6 @@ use tokio::sync::Mutex;
 
 /// A ballot at L = 16 is ~12 KB of JSON; nothing legitimate is bigger.
 const BODY_LIMIT: usize = 64 * 1024;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Entry {
-    pub i: u64,
-    pub ballot: Ballot,
-    #[serde(with = "codec::bytes32")]
-    pub prev_hash: [u8; 32],
-    #[serde(with = "codec::bytes32")]
-    pub entry_hash: [u8; 32],
-}
-
-/// The whole public record of one auction; also mirrored as a static file.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AuctionLog {
-    pub manifest: Manifest,
-    #[serde(with = "codec::point")]
-    pub bulletin_pk: Point,
-    pub entries: Vec<Entry>,
-    pub close: Option<Close>,
-    pub decryptions: Vec<DecryptionRecord>,
-}
-
-impl AuctionLog {
-    pub fn head(&self) -> [u8; 32] {
-        self.entries
-            .last()
-            .map(|e| e.entry_hash)
-            .unwrap_or_else(|| log::genesis(&self.manifest.auction_id))
-    }
-}
 
 struct Auction {
     log: AuctionLog,
@@ -120,7 +95,10 @@ impl Bulletin {
             .route("/v1/auctions/{id}", get(get_log))
             .route("/v1/auctions/{id}/ballots", post(append))
             .route("/v1/auctions/{id}/close", post(close))
+            .route("/v1/auctions/{id}/bonds", post(add_bonds))
             .route("/v1/auctions/{id}/decryptions", post(add_decryption))
+            .route("/v1/auctions/{id}/result", post(add_result))
+            .route("/v1/auctions/{id}/settlements", post(add_settlement))
             .layer(DefaultBodyLimit::max(BODY_LIMIT))
             .with_state(Arc::new(self))
     }
@@ -159,7 +137,16 @@ async fn create(State(b): State<Shared>, Json(m): Json<Manifest>) -> ApiResult<A
         // Idempotent for the identical manifest; never replaceable.
         return if a.log.manifest == m { Ok(Json(a.log.clone())) } else { Err((StatusCode::CONFLICT, "auction exists")) };
     }
-    let log = AuctionLog { manifest: m.clone(), bulletin_pk: b.pk, entries: vec![], close: None, decryptions: vec![] };
+    let log = AuctionLog {
+        manifest: m.clone(),
+        bulletin_pk: b.pk,
+        entries: vec![],
+        close: None,
+        bonds: None,
+        decryptions: vec![],
+        result: None,
+        settlements: vec![],
+    };
     b.persist(&log)?;
     all.insert(m.auction_id, Auction { log: log.clone(), seen_p: HashSet::new() });
     Ok(Json(log))
@@ -220,25 +207,41 @@ async fn close(State(b): State<Shared>, Path(id): Path<String>, Json(c): Json<Cl
     Ok(Json(a.log.clone()))
 }
 
-/// The ciphertext a decryption target names, recomputed from the log.
-pub fn target_ciphertext(log: &AuctionLog, target: &str) -> Option<tally_crypto::elgamal::Ciphertext> {
-    let levels = log.manifest.levels();
-    if let Some(k) = target.strip_prefix("T_") {
-        let k: usize = k.parse().ok()?;
-        if k == 0 || k > levels {
-            return None;
+/// Run `f` on the auction, persist, and roll back if storage fails.
+async fn mutate<T>(
+    b: &Bulletin,
+    id: &str,
+    f: impl FnOnce(&mut AuctionLog) -> Result<T, (StatusCode, &'static str)>,
+) -> ApiResult<T> {
+    let id = auction_id(id)?;
+    let mut all = b.auctions.lock().await;
+    let a = all.get_mut(&id).ok_or_else(not_found)?;
+    let before = a.log.clone();
+    let out = f(&mut a.log)?;
+    if let Err(e) = b.persist(&a.log) {
+        a.log = before;
+        return Err(e);
+    }
+    Ok(Json(out))
+}
+
+async fn add_bonds(State(b): State<Shared>, Path(id): Path<String>, Json(att): Json<BondAttestation>) -> ApiResult<usize> {
+    mutate(&b, &id, |log| {
+        if log.close.is_none() {
+            return Err((StatusCode::CONFLICT, "auction still open"));
         }
-        let ballots: Vec<Ballot> = log.entries.iter().map(|e| e.ballot.clone()).collect();
-        return Some(clearing::tally(&ballots, levels)[k - 1]);
-    }
-    let rest = target.strip_prefix("ballot:")?;
-    let (p_hex, k) = rest.rsplit_once(':')?;
-    let k: usize = k.parse().ok()?;
-    let e = log.entries.iter().find(|e| codec::point_to_hex(&e.ballot.p) == p_hex)?;
-    if k == 0 || k > levels {
-        return None;
-    }
-    Some(e.ballot.c[k - 1])
+        if log.bonds.is_some() {
+            return Err((StatusCode::CONFLICT, "bonded set already attested"));
+        }
+        let in_range = att.bonded.iter().all(|i| (*i as usize) < log.entries.len());
+        if att.auction_id != log.manifest.auction_id || att.root != log.head() || !in_range || !att.verify(&log.manifest.committee.key) {
+            return Err(bad("attestation rejected"));
+        }
+        let n = att.bonded.len();
+        log.bonds = Some(att);
+        Ok(n)
+    })
+    .await
 }
 
 async fn add_decryption(
@@ -246,23 +249,50 @@ async fn add_decryption(
     Path(id): Path<String>,
     Json(rec): Json<DecryptionRecord>,
 ) -> ApiResult<usize> {
-    let id = auction_id(&id)?;
-    let mut all = b.auctions.lock().await;
-    let a = all.get_mut(&id).ok_or_else(not_found)?;
-    if a.log.close.is_none() {
-        return Err((StatusCode::CONFLICT, "auction still open"));
-    }
-    if a.log.decryptions.iter().any(|d| d.target == rec.target) {
-        return Err((StatusCode::CONFLICT, "target already decrypted"));
-    }
-    let ct = target_ciphertext(&a.log, &rec.target).ok_or_else(|| bad("unknown target"))?;
-    if ct != rec.ciphertext() || !threshold::verify_record(&a.log.manifest.committee.key, &rec) {
-        return Err(bad("decryption rejected"));
-    }
-    a.log.decryptions.push(rec);
-    if let Err(e) = b.persist(&a.log) {
-        a.log.decryptions.pop();
-        return Err(e);
-    }
-    Ok(Json(a.log.decryptions.len()))
+    mutate(&b, &id, |log| {
+        if log.bonds.is_none() {
+            return Err((StatusCode::CONFLICT, "bonded set not attested yet"));
+        }
+        let wanted = log.next_targets().map_err(|_| bad("clearing state"))?;
+        if !wanted.contains(&rec.target) {
+            return Err((StatusCode::CONFLICT, "target not needed by clearing"));
+        }
+        let ct = log.target_ciphertext(&rec.target).ok_or_else(|| bad("unknown target"))?;
+        if ct != rec.ciphertext() || !threshold::verify_record(&log.manifest.committee.key, &rec) {
+            return Err(bad("decryption rejected"));
+        }
+        log.decryptions.push(rec);
+        Ok(log.decryptions.len())
+    })
+    .await
+}
+
+async fn add_result(State(b): State<Shared>, Path(id): Path<String>, Json(r): Json<AuctionResult>) -> ApiResult<usize> {
+    mutate(&b, &id, |log| {
+        if log.result.is_some() {
+            return Err((StatusCode::CONFLICT, "result already published"));
+        }
+        if log.compute_result(r.close_block_hash).as_ref() != Ok(&r) {
+            return Err(bad("result does not recompute from the log"));
+        }
+        let n = r.winners.len();
+        log.result = Some(r);
+        Ok(n)
+    })
+    .await
+}
+
+async fn add_settlement(State(b): State<Shared>, Path(id): Path<String>, Json(s): Json<Settlement>) -> ApiResult<usize> {
+    mutate(&b, &id, |log| {
+        let Some(r) = &log.result else { return Err((StatusCode::CONFLICT, "no result yet")) };
+        if !r.winners.contains(&s.p) || !s.verify(&log.manifest.auction_id, &log.manifest.seller_pk) {
+            return Err(bad("settlement rejected"));
+        }
+        if log.settlements.iter().any(|x| x.p == s.p) {
+            return Err((StatusCode::CONFLICT, "winner already settled"));
+        }
+        log.settlements.push(s);
+        Ok(log.settlements.len())
+    })
+    .await
 }
