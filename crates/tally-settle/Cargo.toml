@@ -1,0 +1,36 @@
+[package]
+name = "tally-settle"
+version = "0.1.0"
+description = "Mint carrier-note items and settle Tally sales atomically with Ironwood PCZTs"
+edition.workspace = true
+license.workspace = true
+rust-version = "1.89"
+publish = false
+
+[dependencies]
+tally-crypto = { path = "../tally-crypto" }
+tally-zcash = { path = "../tally-zcash" }
+
+anyhow = "1"
+clap = { version = "4.5", features = ["derive"] }
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+secrecy = "0.8"
+age = { version = "0.12", features = ["armor"] }
+bip0039 = { version = "0.14", features = ["std"] }
+rand = { version = "0.10", default-features = false, features = ["sys_rng"] }
+rand_core_06 = { package = "rand_core", version = "0.6", features = ["getrandom"] }
+
+# Same librustzcash revision as zcash-devtool, so wallet databases stay compatible.
+orchard = { version = "0.16", default-features = false, features = ["circuit"] }
+pczt = { version = "=0.10.0-pre.2", features = ["io-finalizer", "orchard", "prover", "signer", "spend-finalizer", "tx-extractor", "zcp-builder"] }
+zcash_client_backend = { version = "=0.25.0-pre.2", features = ["orchard", "pczt", "unstable"] }
+zcash_client_sqlite = { version = "=0.23.0-pre.2", features = ["transparent-inputs", "unstable", "orchard"] }
+zcash_keys = { version = "=0.17.0-pre.2", features = ["orchard", "sapling", "unstable"] }
+zcash_primitives = "=0.31.0-pre.2"
+zcash_protocol = "=0.11.0-pre.1"
+zip32 = "0.3"
+incrementalmerkletree = "0.9"
+rusqlite = "0.37"
