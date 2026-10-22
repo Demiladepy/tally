@@ -7,7 +7,7 @@ ZECATHON, Private Markets track. Work in progress.
 ## Status
 | Layer | State |
 |---|---|
-| 1. PCZT settlement on testnet | not started. Needs a funded testnet wallet |
+| 1. PCZT settlement on testnet | ✅ atomic sale on testnet (`evidence/testnet-2026-10-22`) |
 | 2. `tally-crypto`: ElGamal, ballot proofs | ✅ done, tests pass |
 | 3. DKG, threshold decryption, clearing | ✅ offline simulation matches the plaintext reference |
 | 4. Full auction on testnet | — |

@@ -29,12 +29,28 @@ The odds are about 1/num_actions per try, so a few tries is enough. The seller r
 2. Buyer proves, signs only their own spend, and redacts their private fields.
 3. Seller checks the price, item, binding and expiry, signs the carrier spend last, extracts the transaction and broadcasts it.
 
-## Acceptance (from the spec)
-- [ ] Mint 2 carrier items on testnet.
-- [ ] One txid moves an item to the buyer and ZEC to the seller.
-- [ ] The explorer shows only shielded data.
-- [ ] A half-signed PCZT can't be extracted.
-- [ ] A replay of a spent carrier fails.
+## Acceptance (from the spec): done Oct 22, see `evidence/testnet-2026-10-22`
+- [x] Mint 2 carrier items on testnet.
+- [x] One txid moves an item to the buyer and ZEC to the seller.
+- [x] On-chain data is Ironwood-only (no transparent, Sapling or Orchard parts; only the fee is public).
+- [x] A half-signed PCZT can't be extracted.
+- [x] The node rejects a replay, and a spent carrier can't be re-sold.
+
+## Tooling gaps found (Oct 22)
+- `zcash-devtool pczt sign` only signs Orchard spends, not Ironwood, so `tally-settle` signs with `Signer::sign_ironwood`.
+- `zcash-devtool pczt send` only accepts PCZTs built by its own wallet (it requires proposal info). Use `pczt send-without-storing`.
+- `zcash-devtool inspect` prints only the header of a v6 transaction. `tally-settle try-extract` prints the per-pool structure.
+- Compact blocks carry no memos. Run `wallet enhance` before reading item memos.
+- The faucet in the spec (faucet.zecpages.com) is down. Fauzec and the Valar and jinolabs faucets work.
+
+## Run it
+```
+tally-settle mint --wallet W --identity W.age --count 2 --record mint.json --out mint.pczt
+zcash-devtool pczt -w W send-without-storing mint.pczt      # then put the txid in mint.json
+tally-settle sale-build --seller-wallet S --buyer-wallet B --buyer-identity B.age --record mint.json --item 0 --price-zat 1000000 --out sale.pczt
+tally-settle sale-accept --seller-wallet S --seller-identity S.age --input sale.pczt --out sale-final.pczt
+zcash-devtool pczt -w S send-without-storing sale-final.pczt
+```
 
 ## Environment notes
 - On Windows, the very long session path breaks `dlltool` and `ring` builds. Build with `CARGO_TARGET_DIR=C:/Users/User/.tally-target`.
