@@ -43,12 +43,29 @@ The odds are about 1/num_actions per try, so a few tries is enough. The seller r
 - Compact blocks carry no memos. Run `wallet enhance` before reading item memos.
 - The faucet in the spec (faucet.zecpages.com) is down. Fauzec and the Valar and jinolabs faucets work.
 
+## Hardening (Oct 22): see `evidence/testnet-2026-10-22-hardened`
+- **Per-item vault accounts and per-sale payout accounts.** A viewing key the seller shares exposes one item and nothing else.
+- **Listing handoff.** The buyer builds from `listing.json` alone. It checks the note opens under the vault key, sits in the tree at the stated anchor, and that the anchor matches its own chain view. It also checks the item signature.
+- **Redaction.** The buyer strips its funding spend (key, witness, note), its change and the item's destination. A byte scan proves none survive, and a check proves the buyer alone can't extract.
+- **The seller checks before signing last:**
+  - the listing hash;
+  - the expiry window;
+  - exactly one spend of its carrier;
+  - the price paid to its payout address.
+
 ## Run it
 ```
-tally-settle mint --wallet W --identity W.age --count 2 --record mint.json --out mint.pczt
-zcash-devtool pczt -w W send-without-storing mint.pczt      # then put the txid in mint.json
-tally-settle sale-build --seller-wallet S --buyer-wallet B --buyer-identity B.age --record mint.json --item 0 --price-zat 1000000 --out sale.pczt
-tally-settle sale-accept --seller-wallet S --seller-identity S.age --input sale.pczt --out sale-final.pczt
+zcash-devtool wallet -w S generate-account -i S.age --name vault-1     # one per item
+zcash-devtool wallet -w S generate-account -i S.age --name payout-1    # one per sale
+zcash-devtool wallet -w B generate-account -i B.age --name inbox-1     # buyer's receiving vault
+tally-settle mint --wallet S --identity S.age --payer seller --vaults vault-1 --record mint.json --out mint.pczt
+zcash-devtool pczt -w S send-without-storing mint.pczt                  # then set txid in mint.json
+zcash-devtool wallet -w S enhance                                       # memos are not in compact blocks
+tally-settle list --wallet S --record mint.json --item 0 --payout-account payout-1 --price-zat 1000000 --out listing.json
+#   seller -> buyer: listing.json
+tally-settle sale-build --wallet B --identity B.age --payer buyer --receive-account inbox-1 --listing listing.json --out sale.pczt
+#   buyer -> seller: sale.pczt, sale.terms.json
+tally-settle sale-accept --wallet S --identity S.age --listing listing.json --input sale.pczt --out sale-final.pczt
 zcash-devtool pczt -w S send-without-storing sale-final.pczt
 ```
 
