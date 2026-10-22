@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tally — sealed bids on Zcash</title>
+  <link rel="stylesheet" href="/shared/style.css">
+  <script type="module" src="/shared/index.js"></script>
+</head>
+<body>
+  <div class="bar"><div class="wrap">
+    <a class="brand" href="/">T<span>A</span>LLY</a>
+    <span class="net">Zcash testnet · Ironwood</span>
+    <nav><a href="/" aria-current="page">Cases</a><a href="/verify.html">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
+  </div></div>
+
+  <main class="wrap">
+    <section class="hero">
+      <span class="label">Sealed-bid auction · uniform price</span>
+      <h1>Nobody's bid is ever opened.</h1>
+      <p class="lede">Bidders seal a price ladder in their browser. The committee opens only the handful of totals a binary search needs, and anyone can re-run every check right here on this page.</p>
+    </section>
+
+    <section class="section" aria-labelledby="cases-h">
+      <header><h2 id="cases-h">Open cases</h2><span class="label" id="count"></span></header>
+      <ul class="case-list" id="cases"><li class="case"><span class="dim mono">Contacting the bulletin…</span></li></ul>
+    </section>
+
+    <section class="section" aria-labelledby="how-h">
+      <header><h2 id="how-h">The job, in four moves</h2></header>
+      <div class="how">
+        <div><span class="label">01 · Seal</span><p>Turn the dial to your max. Your browser encrypts a yes/no for every price level. The number never leaves this page.</p></div>
+        <div><span class="label">02 · Bond</span><p>A small shielded bond, with a memo that ties it to your sealed ballot and a one-time refund address.</p></div>
+        <div><span class="label">03 · Crack</span><p>At close, a 2-of-3 committee opens only the sums a binary search needs. Never a single bid.</p></div>
+        <div><span class="label">04 · Settle</span><p>Winners swap ZEC for the item in one atomic Ironwood transaction. Bonds come back.</p></div>
+      </div>
+    </section>
+  </main>
+  <footer class="foot"><div class="wrap">No trackers, no third-party scripts, no IP logs. Everything on this page is served by the bulletin itself.</div></footer>
+</body>
+</html>

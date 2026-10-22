@@ -1,0 +1,59 @@
+// node web/test/wasm.test.mjs <path/to/tally_wasm.wasm>
+// Runs the browser verifier on the real testnet auction log, then tampers.
+import { readFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+import { load, zip321 } from "../shared/tally.js";
+
+const wasmPath = process.argv[2] ?? "web/tally_wasm.wasm";
+const t = await load(await readFile(wasmPath));
+const log = JSON.parse(await readFile(new URL("../../evidence/testnet-2026-10-22-auction/auction-log.json", import.meta.url)));
+
+// 1. The testnet auction goes all green in WASM.
+const r = t.verifyLog(log);
+for (const c of r.checks) console.log(`${c.ok ? "PASS" : "FAIL"} ${c.name}: ${c.detail}`);
+assert.equal(r.checks.length, 10);
+assert.ok(r.all_ok, "testnet log must verify");
+assert.equal(r.summary.result.price_zat, 1200000);
+assert.deepEqual([...r.summary.decrypted_totals].sort((a, b) => a - b), [8, 12, 13, 14]);
+
+// 2. Tampering turns it red.
+const red = (mutate, name) => {
+  const l = structuredClone(log);
+  mutate(l);
+  const v = t.verifyLog(l);
+  assert.ok(!v.all_ok, `tamper not caught: ${name}`);
+  console.log(`caught: ${name} -> ${v.checks.find((c) => !c.ok).name}`);
+};
+red((l) => (l.result.price_zat = 1100000), "lower clearing price");
+red((l) => l.result.winners.reverse() && (l.result.winners[0] = l.entries[0].ballot.P), "swap a winner");
+red((l) => (l.decryptions[0].m += 1), "forge a decrypted total");
+red((l) => l.decryptions.pop(), "hide a decryption");
+red((l) => (l.entries[1].ballot.c[3] = l.entries[2].ballot.c[3]), "alter a ballot");
+red((l) => l.entries.pop(), "drop a ballot");
+red((l) => l.bonds.sigs.pop(), "break the bond quorum");
+red((l) => (l.manifest.supply = 3), "change supply");
+red((l) => (l.settlements[0].txid = "00".repeat(32)), "forge a settlement");
+
+// 3. Sealing a ballot in WASM produces something the verifier side accepts,
+//    and the output never contains the bid.
+const m = log.manifest;
+const sealed = t.sealBallot(m, 700000);
+assert.equal(sealed.levels_sealed, 16);
+assert.ok(!JSON.stringify(sealed).includes("700000"), "bid leaked into output");
+assert.equal(sealed.ballot.c.length, 16);
+assert.throws(() => t.sealBallot(m, 50000), /below the lowest/);
+const memo = t.bondMemo(m.auction_id, sealed.ballot_hash, "utest1" + "q".repeat(100));
+assert.equal(memo.length, 1024);
+assert.ok(memo.startsWith("f5544c5942"), "ZIP 302 arbitrary-data tag + TLYB");
+const claim = t.signClaim(sealed.ballot_sk, "ab".repeat(32));
+assert.equal(claim.P, sealed.P);
+// The ZIP 321 URI trims zero padding; re-padded, it must be the same memo.
+const uri = zip321("utest1escrow", 100000, memo);
+const b64 = new URL(uri.replace("zcash:", "zcash://x/")).searchParams.get("memo");
+const raw = Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+assert.ok(raw.length < 512, "padding trimmed");
+const padded = Buffer.concat([raw, Buffer.alloc(512 - raw.length)]);
+assert.equal(padded.toString("hex"), memo);
+assert.ok(uri.includes("amount=0.001&"));
+console.log("seal, bond memo, ZIP 321 round trip, claim: ok");
+console.log("ALL WASM TESTS PASSED");

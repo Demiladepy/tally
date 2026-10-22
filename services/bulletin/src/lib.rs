@@ -27,6 +27,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::http::{header, HeaderValue};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -38,6 +39,11 @@ use tally_crypto::manifest::{Close, Manifest, Receipt};
 use tally_crypto::threshold::{self, DecryptionRecord};
 use tally_crypto::{g, log, Point, Scalar};
 use tokio::sync::Mutex;
+use tower_http::set_header::SetResponseHeaderLayer;
+
+/// Self-only: no third-party scripts, styles, fonts or connections. WASM is
+/// allowed to compile; nothing may frame the app.
+const CSP: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 /// A ballot at L = 16 is ~12 KB of JSON; nothing legitimate is bigger.
 const BODY_LIMIT: usize = 64 * 1024;
@@ -89,9 +95,15 @@ impl Bulletin {
     }
 
     pub fn router(self) -> Router {
-        Router::new()
+        self.router_with_web(None)
+    }
+
+    /// Also serve the static web app (verify page, bidding UI) from `web`,
+    /// same origin as the API, under a strict self-only CSP.
+    pub fn router_with_web(self, web: Option<PathBuf>) -> Router {
+        let api = Router::new()
             .route("/v1/info", get(info))
-            .route("/v1/auctions", post(create))
+            .route("/v1/auctions", post(create).get(list))
             .route("/v1/auctions/{id}", get(get_log))
             .route("/v1/auctions/{id}/ballots", post(append))
             .route("/v1/auctions/{id}/close", post(close))
@@ -100,7 +112,18 @@ impl Bulletin {
             .route("/v1/auctions/{id}/result", post(add_result))
             .route("/v1/auctions/{id}/settlements", post(add_settlement))
             .layer(DefaultBodyLimit::max(BODY_LIMIT))
-            .with_state(Arc::new(self))
+            .with_state(Arc::new(self));
+        let app = match web {
+            Some(dir) => api.fallback_service(tower_http::services::ServeDir::new(dir)),
+            None => api,
+        };
+        app.layer(SetResponseHeaderLayer::overriding(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP)))
+            .layer(SetResponseHeaderLayer::overriding(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer")))
+            .layer(SetResponseHeaderLayer::overriding(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff")))
+            .layer(SetResponseHeaderLayer::overriding(
+                header::HeaderName::from_static("permissions-policy"),
+                HeaderValue::from_static("camera=(), microphone=(), geolocation=(), interest-cohort=()"),
+            ))
     }
 
     /// Write the static mirror atomically (temp file + rename).
@@ -150,6 +173,33 @@ async fn create(State(b): State<Shared>, Json(m): Json<Manifest>) -> ApiResult<A
     b.persist(&log)?;
     all.insert(m.auction_id, Auction { log: log.clone(), seen_p: HashSet::new() });
     Ok(Json(log))
+}
+
+#[derive(Serialize)]
+struct AuctionSummary {
+    auction_id: String,
+    supply: u64,
+    levels: usize,
+    ballots: usize,
+    closed: bool,
+    cleared: bool,
+}
+
+async fn list(State(b): State<Shared>) -> Json<Vec<AuctionSummary>> {
+    let all = b.auctions.lock().await;
+    let mut out: Vec<AuctionSummary> = all
+        .values()
+        .map(|a| AuctionSummary {
+            auction_id: hex::encode(a.log.manifest.auction_id),
+            supply: a.log.manifest.supply,
+            levels: a.log.manifest.levels(),
+            ballots: a.log.entries.len(),
+            closed: a.log.close.is_some(),
+            cleared: a.log.result.is_some(),
+        })
+        .collect();
+    out.sort_by(|x, y| x.auction_id.cmp(&y.auction_id));
+    Json(out)
 }
 
 async fn get_log(State(b): State<Shared>, Path(id): Path<String>) -> ApiResult<AuctionLog> {

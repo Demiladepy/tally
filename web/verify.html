@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verify — Tally</title>
+  <link rel="stylesheet" href="/shared/style.css">
+  <script type="module" src="/shared/verify.js"></script>
+</head>
+<body>
+  <div class="bar"><div class="wrap">
+    <a class="brand" href="/">T<span>A</span>LLY</a>
+    <span class="net">Zcash testnet · Ironwood</span>
+    <nav><a href="/">Cases</a><a href="/verify.html" aria-current="page">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
+  </div></div>
+
+  <main class="wrap">
+    <section class="verdict" id="verdict" aria-live="polite">
+      <span class="label" id="case-label">Verify an auction</span>
+      <div class="big" id="verdict-text">Loading the verifier…</div>
+      <p class="lede" id="verdict-sub">Every check below runs in your browser, in WebAssembly compiled from the same Rust the committee uses. The server's word counts for nothing.</p>
+    </section>
+
+    <section class="section" id="result-sec" hidden aria-labelledby="res-h">
+      <header><h2 id="res-h">The take</h2><span class="label" id="outcome"></span></header>
+      <div class="facts">
+        <div><span class="label">Clearing price</span><div class="price-tag" id="price">—</div></div>
+        <div><span class="label">Items</span><div class="v" id="supply"></div></div>
+        <div><span class="label">Ballots · bonded</span><div class="v" id="ballots"></div></div>
+        <div><span class="label">Committee</span><div class="v" id="committee"></div></div>
+      </div>
+    </section>
+
+    <section class="section" id="ladder-sec" hidden aria-labelledby="lad-h">
+      <header><h2 id="lad-h">What was opened</h2><span class="label" id="opened"></span></header>
+      <div class="ladder" id="ladder" role="img" aria-label="Price ladder"></div>
+      <div class="legend"><span><i class="sealed"></i>Sealed: never decrypted</span><span><i class="open"></i>Total opened by the binary search</span><span><i class="clear"></i>Clearing level</span></div>
+    </section>
+
+    <section class="section" aria-labelledby="chk-h">
+      <header><h2 id="chk-h">Checks</h2><span class="label" id="tally"></span></header>
+      <ol class="checks" id="checks"></ol>
+    </section>
+
+    <section class="section" id="winners-sec" hidden aria-labelledby="win-h">
+      <header><h2 id="win-h">Winners</h2><span class="label">Anonymous ballot IDs</span></header>
+      <ul class="rows" id="winners"></ul>
+    </section>
+
+    <section class="section" aria-labelledby="file-h">
+      <header><h2 id="file-h">Verify a saved log</h2><span class="label">Offline · nothing uploaded</span></header>
+      <label class="drop" id="drop">
+        <span>Drop an <code>auction-log.json</code> here, or pick one. It's read locally and checked in this tab.</span>
+        <input type="file" id="file" accept="application/json,.json">
+      </label>
+      <p class="dim mono note-top">Or try the <a href="/verify.html?sample=testnet-2026-10-22">Oct 22 testnet auction</a>.</p>
+    </section>
+  </main>
+  <footer class="foot"><div class="wrap">Root, ballots, proofs, shares and settlements are all in the log. Nothing on this page depends on trusting the bulletin.</div></footer>
+</body>
+</html>

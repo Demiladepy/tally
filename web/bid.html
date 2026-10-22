@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Place a bid — Tally</title>
+  <link rel="stylesheet" href="/shared/style.css">
+  <script type="module" src="/shared/bid.js"></script>
+</head>
+<body>
+  <div class="bar"><div class="wrap">
+    <a class="brand" href="/">T<span>A</span>LLY</a>
+    <span class="net">Zcash testnet · Ironwood</span>
+    <nav><a href="/">Cases</a><a href="/verify.html" id="verify-link">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
+  </div></div>
+
+  <main class="wrap">
+    <section class="verdict">
+      <span class="label" id="case-label">Loading the case file…</span>
+      <div class="big" id="headline">Crack the vault. Quietly.</div>
+      <p class="lede" id="case-facts"></p>
+    </section>
+
+    <ol class="steps" aria-label="Bid steps">
+      <li id="s1" aria-current="step">01 · Set your max</li>
+      <li id="s2">02 · Seal</li>
+      <li id="s3">03 · Bond</li>
+      <li id="s4">04 · Keep your key</li>
+    </ol>
+
+    <!-- 1 + 2: dial and envelope -->
+    <section class="stage" id="stage-seal">
+      <div class="dial-wrap">
+        <div class="dial" id="dial" aria-hidden="true">
+          <svg viewBox="0 0 340 340">
+            <circle cx="170" cy="170" r="160" fill="#15181b" stroke="#3a4148" stroke-width="2"/>
+            <circle cx="170" cy="170" r="128" fill="#0e1012" stroke="#2a2f35" stroke-width="1"/>
+            <g id="ticks"></g>
+            <g class="knob" id="knob">
+              <circle cx="170" cy="170" r="92" fill="#1c2024" stroke="#3a4148" stroke-width="2"/>
+              <circle cx="170" cy="170" r="70" fill="none" stroke="#2a2f35" stroke-width="10" stroke-dasharray="2 6"/>
+              <rect x="166" y="82" width="8" height="34" rx="1" fill="#e9ecef"/>
+            </g>
+            <circle cx="170" cy="170" r="10" fill="#2a2f35"/>
+          </svg>
+        </div>
+        <div class="envelope" id="envelope" hidden>
+          <div class="body"></div>
+          <div class="contents" id="env-contents"></div>
+          <div class="flap"></div>
+          <div class="stamp">SEALED</div>
+        </div>
+        <div class="dial-readout" id="readout">
+          <span class="label">Your max</span>
+          <span class="amt" id="amt">—</span>
+        </div>
+        <input class="dial-range" id="range" type="range" min="1" max="16" step="1" value="1" aria-label="Your maximum price" aria-describedby="private">
+      </div>
+      <div class="copy">
+        <h2 id="stage-title">Turn the dial to the most you'd pay.</h2>
+        <p class="dim" id="stage-body">If the auction clears at or below your max, you win and pay the clearing price, the same as every other winner. Above it, you don't win and your bond comes back.</p>
+        <div class="row">
+          <button class="btn primary" id="seal-btn" type="button">Seal my bid</button>
+          <span class="status" id="seal-status" role="status" aria-live="polite"></span>
+        </div>
+        <p class="private-note" id="private">Your number never leaves this tab. The browser encrypts a yes/no for each of the price levels; only that ciphertext and its proofs go to the bulletin.</p>
+      </div>
+    </section>
+
+    <!-- 3: bond -->
+    <section class="stage" id="stage-bond" hidden>
+      <div class="copy">
+        <h2>Post the bond.</h2>
+        <p class="dim">A small shielded payment to the escrow. It keeps bids honest: winners who don't pay lose it, to a forfeit address, never to the seller. Everyone else gets it back.</p>
+        <div class="field">
+          <label class="label" for="refund">Refund address: a fresh unified address from your wallet</label>
+          <input id="refund" type="text" spellcheck="false" autocomplete="off" placeholder="utest1… (use a new address, not one you've shared)">
+        </div>
+        <div class="row"><button class="btn primary" id="bond-btn" type="button">Make payment request</button><span class="status" id="bond-status" role="status"></span></div>
+      </div>
+      <div class="copy" id="bond-out" hidden>
+        <span class="label">Pay with any Ironwood wallet</span>
+        <div class="uri" id="uri"></div>
+        <div class="row"><a class="btn primary" id="open-wallet" href="#">Open in wallet</a><button class="btn" id="copy-uri" type="button">Copy</button></div>
+        <p class="private-note">The memo carries only your ballot's hash and the refund address. No amount, no name.</p>
+        <div class="row"><button class="btn" id="bond-done" type="button">I've paid the bond</button></div>
+      </div>
+    </section>
+
+    <!-- 4: key -->
+    <section class="stage" id="stage-key" hidden>
+      <div class="copy">
+        <h2>Keep your key. It's how you claim a win.</h2>
+        <p class="dim">The key file holds your ballot's private key and the bulletin's signed receipt. It does not contain your bid. If you win, the seller asks for a signature from this key before releasing the item.</p>
+        <div class="row"><button class="btn primary" id="key-btn" type="button">Download bid key</button><a class="btn" id="watch" href="/verify.html">Watch the case</a></div>
+      </div>
+      <div class="copy">
+        <span class="label">Receipt</span>
+        <ul class="rows" id="receipt"></ul>
+      </div>
+    </section>
+  </main>
+  <footer class="foot"><div class="wrap">Sealing happens in WebAssembly in this tab. The page loads nothing from third parties.</div></footer>
+</body>
+</html>

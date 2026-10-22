@@ -1,4 +1,4 @@
-//! tally-bulletin [--listen 127.0.0.1:8787] [--data ./bulletin-data] [--key ./bulletin.key]
+//! tally-bulletin [--listen 127.0.0.1:8787] [--data ./bulletin-data] [--key ./bulletin.key] [--web ./web]
 //!
 //! The key file holds the bulletin's receipt-signing scalar (hex). It is
 //! created on first run. Keep it out of git.
@@ -31,7 +31,8 @@ async fn main() -> Result<()> {
         sk
     };
 
-    let app = Bulletin::new(sk, Some(data))?.router();
+    let web = args.windows(2).find(|w| w[0] == "--web").map(|w| PathBuf::from(&w[1]));
+    let app = Bulletin::new(sk, Some(data))?.router_with_web(web);
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     // The one line this service ever prints. No per-request output.
     println!("tally-bulletin listening on {listen}");
