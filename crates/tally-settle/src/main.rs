@@ -38,7 +38,7 @@ use zcash_protocol::value::Zatoshis;
 use zcash_protocol::TxId;
 
 use listing::{Carrier, Listing, ListingRest, SaleTerms};
-use wallet::{fresh_address, Acct, Wallet, NETWORK};
+use wallet::{fresh_address, network, Acct, Wallet};
 
 /// Tries before giving up on getting the carrier spend and its successor
 /// output into the same Action (each try succeeds with p ≈ 1/num_actions).
@@ -49,7 +49,7 @@ const EXPIRY_DELTA: u32 = 120;
 const LISTING_TTL: u32 = 80;
 
 #[derive(Parser)]
-#[command(about = "Tally: carrier-note mint and atomic PCZT settlement (testnet)")]
+#[command(about = "Tally: carrier-note mint and atomic PCZT settlement (testnet or mainnet, per wallet)")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -358,7 +358,7 @@ fn height(t: zcash_client_backend::data_api::wallet::TargetHeight) -> BlockHeigh
 
 fn builder(target: BlockHeight, anchor: orchard::Anchor) -> Builder<Network, ()> {
     Builder::new(
-        NETWORK,
+        network(),
         target,
         BuildConfig::Standard {
             sapling_anchor: None,

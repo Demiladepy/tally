@@ -31,7 +31,7 @@ use zcash_protocol::consensus::BlockHeight;
 use zcash_protocol::memo::MemoBytes;
 use zcash_protocol::ShieldedPool;
 
-use crate::wallet::{fresh_address, Acct, Received, Wallet, NETWORK};
+use crate::wallet::{fresh_address, network, Acct, Received, Wallet};
 use crate::{builder, finish_pczt, height, pczt_bytes, rng, zat, zip317_fee};
 
 /// The seller's private auction record (holds the auction signing key).
@@ -81,13 +81,13 @@ pub struct Claim {
 
 pub fn ua_for(addr: orchard::Address) -> Result<String> {
     let ua = UnifiedAddress::from_receivers(Some(addr), None, None, None, None).ok_or_else(|| anyhow!("ua"))?;
-    Ok(ua.encode(&NETWORK))
+    Ok(ua.encode(&network()))
 }
 
 pub fn orchard_receiver(ua: &str) -> Result<orchard::Address> {
-    match Address::decode(&NETWORK, ua) {
+    match Address::decode(&network(), ua) {
         Some(Address::Unified(u)) => u.orchard().copied().ok_or_else(|| anyhow!("address has no Orchard receiver")),
-        _ => bail!("not a testnet unified address"),
+        _ => bail!("not a unified address for this network"),
     }
 }
 

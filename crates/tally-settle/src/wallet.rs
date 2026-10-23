@@ -31,7 +31,21 @@ use zcash_protocol::memo::MemoBytes;
 use zcash_protocol::value::Zatoshis;
 use zcash_protocol::{ShieldedPool, TxId};
 
-pub const NETWORK: Network = Network::TestNetwork;
+static NETWORK: std::sync::OnceLock<Network> = std::sync::OnceLock::new();
+
+/// The network every wallet in this process belongs to, taken from the
+/// wallets' own keys.toml. Mixing networks in one command is refused.
+pub fn network() -> Network {
+    *NETWORK.get().expect("network is set when the first wallet opens")
+}
+
+fn set_network(n: Network) -> Result<()> {
+    let have = *NETWORK.get_or_init(|| n);
+    if have != n {
+        return Err(anyhow!("wallets from different networks in one command"));
+    }
+    Ok(())
+}
 
 pub type Db = WalletDb<rusqlite::Connection, Network, SystemClock, UnwrapErr<SysRng>>;
 pub type Received = ReceivedNote<ReceivedNoteId, orchard::Note>;
@@ -52,11 +66,18 @@ pub struct Acct {
 #[derive(Deserialize)]
 struct KeysToml {
     mnemonic: Option<String>,
+    network: Option<String>,
 }
 
 impl Wallet {
     pub fn open(dir: &Path) -> Result<Self> {
-        let db = WalletDb::for_path(dir.join("data.sqlite"), NETWORK, SystemClock, UnwrapErr(SysRng))
+        let conf: KeysToml = toml::from_str(&fs::read_to_string(dir.join("keys.toml")).context("read keys.toml")?)?;
+        set_network(match conf.network.as_deref().map(str::trim) {
+            Some("main") => Network::MainNetwork,
+            Some("test") | None => Network::TestNetwork,
+            Some(other) => return Err(anyhow!("unsupported network '{other}'")),
+        })?;
+        let db = WalletDb::for_path(dir.join("data.sqlite"), network(), SystemClock, UnwrapErr(SysRng))
             .context("open wallet db")?;
         Ok(Self { dir: dir.to_owned(), db })
     }
@@ -97,7 +118,7 @@ impl Wallet {
         res?;
         let mnemonic = <Mnemonic<English>>::from_phrase(std::str::from_utf8(phrase.expose_secret())?)?;
         let seed = SecretVec::new(mnemonic.to_seed("").to_vec());
-        let usk = UnifiedSpendingKey::from_seed(&NETWORK, seed.expose_secret(), acct.index)
+        let usk = UnifiedSpendingKey::from_seed(&network(), seed.expose_secret(), acct.index)
             .map_err(|e| anyhow!("derive spending key: {e:?}"))?;
         let sk = usk.orchard();
         if FullViewingKey::from(sk) != acct.fvk {

@@ -35,3 +35,10 @@ Status key: ✅ confirmed · ⚠️ partly true / needs hedging · ❌ wrong or 
 - ZPrivDEX: https://forum.zcashcommunity.com/t/zprivdex-building-a-shielded-amm-on-zcash/55368
 - Competitors: https://github.com/Dami904/kalyptra · https://github.com/Blockchain-Oracle/kakure
 - Event: https://thezecathon.com/
+
+## Update, Oct 23: NU7 readiness of the pinned libraries
+The librustzcash revision pinned here (`eb38d7a`, same as zcash-devtool) has **no mainnet NU7 activation height** (`NetworkUpgrade::Nu7 => None` for mainnet; testnet is set to 4,465,026). That's correct today: mainnet is on NU6.3, and transactions built now use the NU6.3 consensus branch. **After mainnet activates NU7 (target height 3,543,405, around Nov 5), these builds would produce transactions for the wrong branch, and nodes would reject them.**
+
+Action before the post-NU7 re-test: bump to the librustzcash and zcash-devtool releases that set the mainnet height, rebuild, and re-run the testnet and mainnet flows.
+
+`tally-settle` takes its network from each wallet's `keys.toml` and refuses to mix networks in one command. The same binary drives testnet and mainnet.
