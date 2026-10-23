@@ -32,3 +32,18 @@ Everything below describes what the code in this repository does today. It claim
 
 ## Escrow custody (honest statement)
 The spec asked for FROST threshold signing of the escrow. As of Oct 2026 the official `frost` crate has no public API that accepts the per-action randomizer an Ironwood PCZT fixes (ZcashFoundation/frost#1094). The escrow is therefore **one ordinary account held by the committee coordinator**. It holds only bonds (0.001 TAZ each in the demo) and a small fee float. The coordinator could steal bonds, and that is the trust users extend. The verifier can't check refunds, because they are shielded.
+
+## Hardening, Oct 23
+| Weak spot found | Fix |
+|---|---|
+| The web bond memo was binary (ZIP 302 F5). Many wallets only send UTF-8 memos, so the memo could be rejected or dropped, and the bond would then not match its ballot. | The bond memo is now plain text: `TLYB1 <auction> <ballot-hash> <refund-ua>`. The bid page also offers a "pay by hand" fallback with copyable address and memo. The decoder still reads the earlier binary bonds. |
+| After `send-without-storing` a wallet doesn't know its notes are spent until the next block. The next build could reuse a spent note, and the mempool would reject it (this happened once with the escrow float). | `tally-settle record --wallet W --input final.pczt` stores the broadcast transaction in each involved wallet at once. Tested on testnet: the next build refuses the spent note instead of reusing it. |
+| The bulletin accepted unlimited auctions and ballots, and every ballot costs real CPU to verify. | Capped at 1,000 auctions and 5,000 ballots per auction, with HTTP 507 past the cap. Tested. |
+| A forfeit could be triggered before winners had their chance to pay. | `refund --forfeit-unsettled` refuses until `close_height + settle_window_blocks`. Which winners forfeit is computed by the shared `AuctionLog::unsettled_winners()`, which is tested. |
+| The tie-break seed's block hash could be any block the coordinator chose. | The verifier now prints the seed block hash and the height it must come from (the manifest's `close_height`), so anyone can check it against an explorer. |
+
+## Still open (stated, not fixed)
+- **Re-offering an unsettled item** to the next eligible ballot isn't automated. A forfeited item stays with the seller.
+- **Lineage** is checked one hop back from a listing, not all the way to the mint.
+- **Escrow is one key**, and the demo committee is one person. Both are explained above.
+- **Mainnet NU7.** The pinned libraries have no mainnet NU7 height (see `DAY_ONE.md`). They must be bumped before activation (~Nov 5).

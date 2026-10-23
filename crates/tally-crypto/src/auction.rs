@@ -186,6 +186,20 @@ impl AuctionLog {
             .unwrap_or_else(|| log::genesis(&self.manifest.auction_id))
     }
 
+    /// Winners with no seller-signed settlement. After the settle window
+    /// these bonds are forfeited (to `forfeit_ua`, never the seller).
+    pub fn unsettled_winners(&self) -> Vec<Point> {
+        match &self.result {
+            Some(r) => r.winners.iter().filter(|p| !self.settlements.iter().any(|s| &s.p == *p)).copied().collect(),
+            None => vec![],
+        }
+    }
+
+    /// First height at which unsettled winners may be forfeited.
+    pub fn forfeit_height(&self) -> u32 {
+        self.manifest.close_height.saturating_add(self.manifest.settle_window_blocks)
+    }
+
     /// Ballots in the attested bonded set (empty before attestation).
     pub fn bonded(&self) -> Vec<&Ballot> {
         let Some(b) = &self.bonds else { return vec![] };
@@ -306,6 +320,13 @@ impl AuctionLog {
     }
 }
 
+/// Block hashes are shown byte-reversed, as explorers display them.
+pub fn display_block_hash(internal: &[u8; 32]) -> String {
+    let mut b = *internal;
+    b.reverse();
+    hex::encode(b)
+}
+
 /// One line on the verify page.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Check {
@@ -403,7 +424,15 @@ pub fn verify(log: &AuctionLog) -> Vec<Check> {
         "Clearing price, winners and tie-break seed recompute exactly",
         recomputed.as_ref() == Ok(r),
         match r.price_zat {
-            Some(p) => format!("{:?} at level {} = {} zat, {} winners", r.outcome, r.k_star.max(1), p, r.winners.len()),
+            Some(p) => format!(
+                "{:?} at level {} = {} zat, {} winners; tie-break seed uses block {} at height {} (check it on any explorer)",
+                r.outcome,
+                r.k_star.max(1),
+                p,
+                r.winners.len(),
+                display_block_hash(&r.close_block_hash),
+                m.close_height
+            ),
             None => format!("{:?}", r.outcome),
         },
     );

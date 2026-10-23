@@ -141,7 +141,7 @@ struct MemoIn {
     refund_ua: String,
 }
 
-/// The 512-byte bond memo (TLYB), hex.
+/// The bond memo: plain text (`TLYB1 ...`) and its 512-byte padded hex.
 pub fn bond_memo(input: &str) -> Result<Value, String> {
     let i: MemoIn = serde_json::from_str(input).map_err(|e| e.to_string())?;
     if !i.refund_ua.starts_with("u1") && !i.refund_ua.starts_with("utest1") {
@@ -152,7 +152,8 @@ pub fn bond_memo(input: &str) -> Result<Value, String> {
         ballot_hash: codec::bytes32_from_hex(&i.ballot_hash).map_err(|e| e.to_string())?,
         refund_ua: i.refund_ua,
     };
-    Ok(json!(hex::encode(bond.encode().map_err(|e| e.to_string())?)))
+    let text = bond.text();
+    Ok(json!({ "text": text, "hex": hex::encode(bond.encode().map_err(|e| e.to_string())?) }))
 }
 
 #[derive(Deserialize)]

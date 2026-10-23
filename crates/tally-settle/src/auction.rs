@@ -409,18 +409,19 @@ pub fn refund(wallet: &Path, identity: &Path, account: &str, bulletin: &str, bon
         .iter()
         .map(|e| (hex::encode(e.ballot.body_hash()), codec::point_to_hex(&e.ballot.p)))
         .collect();
-    let unsettled: Vec<String> = match &log.result {
-        Some(r) if forfeit_unsettled => r
-            .winners
-            .iter()
-            .filter(|p| !log.settlements.iter().any(|s| &s.p == *p))
-            .map(codec::point_to_hex)
-            .collect(),
-        _ => vec![],
-    };
     if forfeit_unsettled && log.result.is_none() {
         bail!("no result yet; can't decide forfeits");
     }
+    let (now, _) = w.heights()?;
+    let now = u32::from(crate::height(now));
+    if forfeit_unsettled && now < log.forfeit_height() {
+        bail!("settle window still open until height {}; winners can still pay", log.forfeit_height());
+    }
+    let unsettled: Vec<String> = if forfeit_unsettled {
+        log.unsettled_winners().iter().map(codec::point_to_hex).collect()
+    } else {
+        vec![]
+    };
 
     let mut outs = vec![];
     let (mut refunds, mut forfeits) = (0, 0);

@@ -23,6 +23,7 @@ tally-settle auction-create --wallet S --record mint.json --committee committee.
 tally-settle bid --wallet B --identity B.age --account bidder-k --bulletin URL --auction-id ID \
   --max-price-zat P --record bid-k.json --out bond-k.pczt
 zcash-devtool pczt -w B send-without-storing bond-k.pczt
+tally-settle record --wallet B --input bond-k.pczt      # wallet learns its spend now, not next block
 
 # at the close height
 tally-settle auction-close --auction auction.json
@@ -50,6 +51,8 @@ tally-committee verify --log URL/v1/auctions/ID
 ```
 
 ## Notes
+- After every `send-without-storing`, run `tally-settle record --wallet <each involved wallet> --input <final pczt>`. Otherwise the next transaction from that account can pick a note that's already spent.
+- Bond memos are plain text (`TLYB1 <auction> <ballot-hash> <refund-ua>`), so any wallet can pay a bond, including by hand.
 - Clearing is adaptive. The binary search picks each total from the previous one, so a distributed committee runs `share` and `combine` once per target, and `clear` does the same loop when the members' secrets are local.
 - The tie-break seed is the block hash at the manifest's close height combined with the log root. The seller closes at that height, so the seed can't be ground by choosing when to close. For this demo the close is triggered by hand at or after that height.
 - A wallet that sends with `send-without-storing` doesn't learn its own spends until it syncs the next block. Sync before building another transaction from the same account.

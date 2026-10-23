@@ -307,3 +307,8 @@ code, .hash { font: 13px/1.4 var(--mono); color: var(--ink-2); word-break: break
   .checks li { opacity: 1; transform: none; }
 }
 .note-top { margin-top: 12px; }
+
+.manual { display: grid; gap: 10px; border-top: 1px solid var(--rule); padding-top: 12px; }
+.manual summary { cursor: pointer; list-style: none; }
+.manual summary::before { content: "+ "; }
+.manual[open] summary::before { content: "- "; }

@@ -9,7 +9,7 @@ use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::Serialize;
 use serde_json::Value;
-use tally_bulletin::Bulletin;
+use tally_bulletin::{Bulletin, Limits};
 use tally_crypto::auction::{self, AuctionLog, AuctionResult, BondAttestation, Outcome, Settlement};
 use tally_crypto::ballot::Ballot;
 use tally_crypto::manifest::{Close, Committee, Manifest, Receipt};
@@ -208,6 +208,11 @@ async fn whole_auction_and_rejections() {
     assert_eq!(post(&app, &result_url, &fake).await, StatusCode::BAD_REQUEST);
     assert_eq!(post(&app, &result_url, &r).await, StatusCode::OK);
 
+    // Before anyone settles, both winners are unsettled (and would forfeit
+    // after the window); each settlement removes one.
+    let log = get_log(&app, &f.id).await;
+    assert_eq!(log.unsettled_winners().len(), 2);
+    assert_eq!(log.forfeit_height(), 300);
     let settle_url = format!("/v1/auctions/{}/settlements", f.id);
     let loser = Settlement::sign(&f.seller_sk, &f.manifest.auction_id, ballots[0].p, "aa".into(), &mut f.rng);
     assert_eq!(post(&app, &settle_url, &loser).await, StatusCode::BAD_REQUEST);
@@ -219,6 +224,10 @@ async fn whole_auction_and_rejections() {
     }
 
     let log = get_log(&app, &f.id).await;
+    assert!(log.unsettled_winners().is_empty(), "both settled: nobody forfeits");
+    let mut one_settled = log.clone();
+    one_settled.settlements.pop();
+    assert_eq!(one_settled.unsettled_winners(), vec![one_settled.result.as_ref().unwrap().winners[1]]);
     let checks = auction::verify(&log);
     for c in &checks {
         assert!(c.ok, "{}: {}", c.name, c.detail);
@@ -273,6 +282,24 @@ async fn undersubscribed_and_void() {
     assert_eq!(post(&app, &format!("/v1/auctions/{}/result", f.id), &r).await, StatusCode::OK);
     let log = get_log(&app, &f.id).await;
     assert!(auction::verify(&log).iter().all(|c| c.ok));
+}
+
+#[tokio::test]
+async fn limits_stop_spam() {
+    let (mut f, b) = fixture(5, 1, 1);
+    let app = b.with_limits(Limits { max_auctions: 1, max_ballots_per_auction: 2 }).router();
+    assert_eq!(post(&app, "/v1/auctions", &f.manifest).await, StatusCode::OK);
+    let url = format!("/v1/auctions/{}/ballots", f.id);
+    for _ in 0..2 {
+        let bl = ballot(&mut f, 3);
+        assert_eq!(post(&app, &url, &bl).await, StatusCode::OK);
+    }
+    let bl = ballot(&mut f, 3);
+    assert_eq!(post(&app, &url, &bl).await, StatusCode::INSUFFICIENT_STORAGE);
+    let mut other = f.manifest.clone();
+    other.auction_id = [77; 32];
+    other.sign(&f.seller_sk, &mut f.rng);
+    assert_eq!(post(&app, "/v1/auctions", &other).await, StatusCode::INSUFFICIENT_STORAGE);
 }
 
 #[tokio::test]

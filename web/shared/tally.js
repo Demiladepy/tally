@@ -35,7 +35,7 @@ export const api = {
   /** Seal a ballot. The bid is used inside WASM and never returned. */
   sealBallot: (manifest, maxPriceZat) =>
     call("tally_seal_ballot", { manifest, max_price_zat: maxPriceZat, seed_hex: seedHex() }),
-  /** 512-byte bond memo as hex. */
+  /** Bond memo: { text, hex }. Text so any wallet can send it. */
   bondMemo: (auctionId, ballotHash, refundUa) =>
     call("tally_bond_memo", { auction_id: auctionId, ballot_hash: ballotHash, refund_ua: refundUa }),
   /** Bulletin's signed inclusion receipt. */

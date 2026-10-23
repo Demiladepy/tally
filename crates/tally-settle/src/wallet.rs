@@ -166,7 +166,7 @@ impl Wallet {
             .filter(|n| n.note().value().inner() >= value)
             .max_by_key(|n| n.note().value().inner())
             .cloned()
-            .ok_or_else(|| anyhow!("no single Ironwood note covers the amount"))
+            .ok_or_else(|| anyhow!("no confirmed Ironwood note covers the amount (change from a recent transaction may still be confirming; sync and retry)"))
     }
 
     /// Ironwood anchor and witness for `position` at `anchor_height`.

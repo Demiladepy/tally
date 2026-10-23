@@ -53,10 +53,25 @@ struct Auction {
     seen_p: HashSet<[u8; 32]>,
 }
 
+/// Caps that keep one bulletin from being filled up by spam. Ballot proofs
+/// cost real CPU to verify, so both counts are bounded.
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    pub max_auctions: usize,
+    pub max_ballots_per_auction: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self { max_auctions: 1_000, max_ballots_per_auction: 5_000 }
+    }
+}
+
 pub struct Bulletin {
     sk: Scalar,
     pk: Point,
     dir: Option<PathBuf>,
+    limits: Limits,
     auctions: Mutex<HashMap<[u8; 32], Auction>>,
 }
 
@@ -91,7 +106,12 @@ impl Bulletin {
                 auctions.insert(log.manifest.auction_id, Auction { log, seen_p });
             }
         }
-        Ok(Self { sk, pk: g() * sk, dir, auctions: Mutex::new(auctions) })
+        Ok(Self { sk, pk: g() * sk, dir, limits: Limits::default(), auctions: Mutex::new(auctions) })
+    }
+
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
     }
 
     pub fn router(self) -> Router {
@@ -156,6 +176,9 @@ async fn info(State(b): State<Shared>) -> Json<Info> {
 async fn create(State(b): State<Shared>, Json(m): Json<Manifest>) -> ApiResult<AuctionLog> {
     m.verify().map_err(|_| bad("manifest rejected"))?;
     let mut all = b.auctions.lock().await;
+    if !all.contains_key(&m.auction_id) && all.len() >= b.limits.max_auctions {
+        return Err((StatusCode::INSUFFICIENT_STORAGE, "auction limit reached"));
+    }
     if let Some(a) = all.get(&m.auction_id) {
         // Idempotent for the identical manifest; never replaceable.
         return if a.log.manifest == m { Ok(Json(a.log.clone())) } else { Err((StatusCode::CONFLICT, "auction exists")) };
@@ -214,6 +237,9 @@ async fn append(State(b): State<Shared>, Path(id): Path<String>, Json(ballot): J
     let a = all.get_mut(&id).ok_or_else(not_found)?;
     if a.log.close.is_some() {
         return Err((StatusCode::CONFLICT, "auction closed"));
+    }
+    if a.log.entries.len() >= b.limits.max_ballots_per_auction {
+        return Err((StatusCode::INSUFFICIENT_STORAGE, "ballot limit reached"));
     }
     let m = &a.log.manifest;
     ballot

@@ -258,6 +258,15 @@ enum Cmd {
         #[arg(long)]
         height: u32,
     },
+    /// After broadcasting, record the transaction in each involved wallet so
+    /// it knows its notes are spent right away (instead of after the next
+    /// sync) and never picks them again for another transaction.
+    Record {
+        #[arg(long, required = true)]
+        wallet: Vec<PathBuf>,
+        #[arg(long)]
+        input: PathBuf,
+    },
     /// Try to extract a transaction from a PCZT (expected to fail if half-signed).
     TryExtract {
         #[arg(long)]
@@ -332,6 +341,7 @@ fn main() -> Result<()> {
             inspect_item(&wallet, &txid, action, &collection_pk, listing.as_deref())
         }
         Cmd::TryExtract { input } => try_extract(&input),
+        Cmd::Record { wallet, input } => record(&wallet, &input),
     }
 }
 
@@ -748,6 +758,17 @@ fn inspect_item(wallet: &Path, tx: &str, action: u32, collection_pk: &str, listi
         println!("same_item      {}", c.item.collection_id == item.collection_id && c.item.item_index == item.item_index);
         println!("hop_advanced   {}", item.hop == c.item.hop + 1);
     }
+    Ok(())
+}
+
+fn record(wallets: &[PathBuf], input: &Path) -> Result<()> {
+    let tx = extract(parse_pczt(&fs::read(input)?)?).context("PCZT is not fully signed")?;
+    for w in wallets {
+        let mut wallet = Wallet::open(w)?;
+        zcash_client_backend::data_api::wallet::decrypt_and_store_transaction(&network(), &mut wallet.db, &tx, None)
+            .map_err(|e| anyhow!("store in {}: {e:?}", w.display()))?;
+    }
+    println!("recorded {} in {} wallet(s)", tx.txid(), wallets.len());
     Ok(())
 }
 

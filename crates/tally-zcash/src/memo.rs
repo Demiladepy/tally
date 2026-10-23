@@ -142,8 +142,50 @@ pub struct Bond {
     pub refund_ua: String,
 }
 
+/// Text tag for bond memos. Text (not ZIP 302 binary) because most wallets
+/// only send UTF-8 memos, and a user can paste this one by hand.
+const BOND_TEXT_TAG: &str = "TLYB1";
+
 impl Bond {
+    /// `TLYB1 <auction_id hex> <ballot_hash hex> <refund_ua>`: plain ASCII.
+    pub fn text(&self) -> String {
+        format!("{BOND_TEXT_TAG} {} {} {}", hex::encode(self.auction_id), hex::encode(self.ballot_hash), self.refund_ua)
+    }
+
+    /// The memo as wallets send it: the text, zero-padded to 512 bytes.
     pub fn encode(&self) -> Result<[u8; MEMO_LEN], MemoError> {
+        let t = self.text();
+        if t.len() > MEMO_LEN || !self.refund_ua.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(MemoError::TooLong);
+        }
+        let mut m = [0u8; MEMO_LEN];
+        m[..t.len()].copy_from_slice(t.as_bytes());
+        Ok(m)
+    }
+
+    /// Accepts the text form (tolerating surrounding whitespace a wallet may
+    /// add) and the earlier binary form, so old bonds stay readable.
+    pub fn decode(m: &[u8; MEMO_LEN]) -> Result<Self, MemoError> {
+        if m[0] == ARBITRARY {
+            return Self::decode_binary(m);
+        }
+        let end = m.iter().rposition(|&b| b != 0).map(|i| i + 1).unwrap_or(0);
+        let s = std::str::from_utf8(&m[..end]).map_err(|_| MemoError::Malformed)?.trim();
+        let parts: Vec<&str> = s.split_whitespace().collect();
+        let [tag, id, hash, ua] = parts.as_slice() else {
+            return Err(MemoError::WrongTag);
+        };
+        if *tag != BOND_TEXT_TAG {
+            return Err(MemoError::WrongTag);
+        }
+        let h32 = |h: &str| -> Result<[u8; 32], MemoError> {
+            hex::decode(h).ok().and_then(|v| v.try_into().ok()).ok_or(MemoError::Malformed)
+        };
+        Ok(Self { auction_id: h32(id)?, ballot_hash: h32(hash)?, refund_ua: ua.to_string() })
+    }
+
+    /// Binary form used by the first testnet auction (F5 | "TLYB" | ...).
+    pub fn encode_binary(&self) -> Result<[u8; MEMO_LEN], MemoError> {
         let ua = self.refund_ua.as_bytes();
         if 1 + 4 + 64 + 2 + ua.len() > MEMO_LEN {
             return Err(MemoError::TooLong);
@@ -159,7 +201,7 @@ impl Bond {
         Ok(m)
     }
 
-    pub fn decode(m: &[u8; MEMO_LEN]) -> Result<Self, MemoError> {
+    fn decode_binary(m: &[u8; MEMO_LEN]) -> Result<Self, MemoError> {
         let mut r = Reader { buf: m, pos: 0 };
         if r.take(1)? != [ARBITRARY] || r.take(4)? != BOND_TAG {
             return Err(MemoError::WrongTag);
@@ -253,6 +295,26 @@ mod tests {
         m = item.encode().unwrap();
         m[1] = b'X';
         assert_eq!(Item::decode(&m), Err(MemoError::WrongTag));
+    }
+
+    #[test]
+    fn bond_text_memo_is_plain_ascii_and_tolerates_whitespace() {
+        let bond = Bond { auction_id: [0xab; 32], ballot_hash: [0x01; 32], refund_ua: "utest1abc".into() };
+        let m = bond.encode().unwrap();
+        assert!(m[0] < 0xF5, "ZIP 302 text memo");
+        assert!(std::str::from_utf8(&m[..bond.text().len()]).is_ok());
+        assert_eq!(Bond::decode(&m).unwrap(), bond);
+        // A wallet that adds a trailing newline or spaces still decodes.
+        let t = format!("  {}\n", bond.text());
+        let mut m2 = [0u8; MEMO_LEN];
+        m2[..t.len()].copy_from_slice(t.as_bytes());
+        assert_eq!(Bond::decode(&m2).unwrap(), bond);
+        // The earlier binary form still decodes.
+        assert_eq!(Bond::decode(&bond.encode_binary().unwrap()).unwrap(), bond);
+        // Garbage and wrong tags don't.
+        let mut bad = m;
+        bad[0] = b'X';
+        assert!(Bond::decode(&bad).is_err());
     }
 
     #[test]

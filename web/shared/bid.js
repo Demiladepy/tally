@@ -177,12 +177,21 @@ $("bond-btn").addEventListener("click", () => {
     status("bond-status", e.message, "err");
     return;
   }
-  const uri = zip321(manifest.escrow_ua, manifest.bond_zat, memo);
+  const uri = zip321(manifest.escrow_ua, manifest.bond_zat, memo.hex);
+  $("memo-text").textContent = memo.text;
+  $("escrow-addr").textContent = manifest.escrow_ua;
   $("uri").textContent = uri;
   $("open-wallet").href = uri;
   $("bond-out").hidden = false;
   status("bond-status", `${zec(manifest.bond_zat)} ZEC to the escrow.`, "ok");
 });
+
+for (const [btn, src] of [["copy-memo", "memo-text"], ["copy-addr", "escrow-addr"]]) {
+  $(btn).addEventListener("click", async () => {
+    await navigator.clipboard.writeText($(src).textContent);
+    $(btn).textContent = "Copied";
+  });
+}
 
 $("copy-uri").addEventListener("click", async () => {
   await navigator.clipboard.writeText($("uri").textContent);
