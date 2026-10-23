@@ -3,15 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
   <title>Tally — sealed bids on Zcash</title>
-  <link rel="stylesheet" href="/shared/style.css">
-  <script type="module" src="/shared/index.js"></script>
+  <link rel="stylesheet" href="shared/style.css">
+  <script type="module" src="shared/index.js"></script>
 </head>
 <body>
   <div class="bar"><div class="wrap">
-    <a class="brand" href="/">T<span>A</span>LLY</a>
+    <a class="brand" href="./">T<span>A</span>LLY</a>
     <span class="net">Zcash testnet · Ironwood</span>
-    <nav><a href="/" aria-current="page">Cases</a><a href="/verify.html">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
+    <nav><a href="./" aria-current="page">Cases</a><a href="verify.html">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
   </div></div>
 
   <main class="wrap">

@@ -1,10 +1,10 @@
-import { load, zec, zip321 } from "/shared/tally.js";
+import { load, zec, zip321 } from "./tally.js";
 
 const $ = (id) => document.getElementById(id);
 const short = (h) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 const SVG = "http://www.w3.org/2000/svg";
 
-const tally = await load("/tally_wasm.wasm");
+const tally = await load(new URL("../tally_wasm.wasm", import.meta.url).href);
 const auctionId = new URLSearchParams(location.search).get("auction") ?? "";
 
 let manifest = null;
@@ -35,7 +35,7 @@ async function loadCase() {
     $("seal-btn").disabled = true;
     return;
   }
-  const r = await fetch(`/v1/auctions/${auctionId}`);
+  const r = await fetch(`v1/auctions/${auctionId}`);
   if (!r.ok) {
     $("headline").textContent = "That case isn't on this bulletin.";
     $("seal-btn").disabled = true;
@@ -44,8 +44,8 @@ async function loadCase() {
   const log = await r.json();
   manifest = log.manifest;
   bulletinPk = log.bulletin_pk;
-  $("verify-link").href = `/verify.html?auction=${auctionId}`;
-  $("watch").href = `/verify.html?auction=${auctionId}`;
+  $("verify-link").href = `verify.html?auction=${auctionId}`;
+  $("watch").href = `verify.html?auction=${auctionId}`;
   $("case-label").textContent = `Case ${short(auctionId)}`;
   const L = manifest.ladder_zat;
   $("case-facts").textContent =
@@ -136,7 +136,7 @@ $("seal-btn").addEventListener("click", async () => {
   $("stage-body").textContent = `${sealed.levels_sealed} encrypted yes/no cells, each with a proof it holds 0 or 1, plus proofs the cells only step down.`;
 
   try {
-    const r = await fetch(`/v1/auctions/${auctionId}/ballots`, {
+    const r = await fetch(`v1/auctions/${auctionId}/ballots`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(sealed.ballot),

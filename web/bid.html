@@ -3,15 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
   <title>Place a bid — Tally</title>
-  <link rel="stylesheet" href="/shared/style.css">
-  <script type="module" src="/shared/bid.js"></script>
+  <link rel="stylesheet" href="shared/style.css">
+  <script type="module" src="shared/bid.js"></script>
 </head>
 <body>
   <div class="bar"><div class="wrap">
-    <a class="brand" href="/">T<span>A</span>LLY</a>
+    <a class="brand" href="./">T<span>A</span>LLY</a>
     <span class="net">Zcash testnet · Ironwood</span>
-    <nav><a href="/">Cases</a><a href="/verify.html" id="verify-link">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
+    <nav><a href="./">Cases</a><a href="verify.html" id="verify-link">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
   </div></div>
 
   <main class="wrap">
@@ -101,7 +103,7 @@
       <div class="copy">
         <h2>Keep your key. It's how you claim a win.</h2>
         <p class="dim">The key file holds your ballot's private key and the bulletin's signed receipt. It does not contain your bid. If you win, the seller asks for a signature from this key before releasing the item.</p>
-        <div class="row"><button class="btn primary" id="key-btn" type="button">Download bid key</button><a class="btn" id="watch" href="/verify.html">Watch the case</a></div>
+        <div class="row"><button class="btn primary" id="key-btn" type="button">Download bid key</button><a class="btn" id="watch" href="verify.html">Watch the case</a></div>
       </div>
       <div class="copy">
         <span class="label">Receipt</span>

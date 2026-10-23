@@ -1,4 +1,4 @@
-import { load, zec } from "/shared/tally.js";
+import { load, zec } from "./tally.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -9,7 +9,7 @@ const el = (tag, cls, text) => {
 };
 const short = (h) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 
-const tally = await load("/tally_wasm.wasm");
+const tally = await load(new URL("../tally_wasm.wasm", import.meta.url).href);
 
 function render(log, source) {
   $("verdict-text").textContent = `Checking ${log?.entries?.length ?? 0} ballots and ${log?.decryptions?.length ?? 0} decryptions…`;
@@ -99,7 +99,7 @@ function renderNow(log, source) {
 async function fromUrl() {
   const q = new URLSearchParams(location.search);
   if (q.get("sample")) {
-    const r = await fetch(`/samples/${encodeURIComponent(q.get("sample"))}.json`);
+    const r = await fetch(`samples/${encodeURIComponent(q.get("sample"))}.json`);
     if (r.ok) return render(await r.json(), "saved sample");
   }
   const id = q.get("auction");
@@ -107,7 +107,7 @@ async function fromUrl() {
     $("verdict-text").textContent = "Pick a case or drop a log";
     return;
   }
-  const r = await fetch(`/v1/auctions/${id}`);
+  const r = await fetch(`v1/auctions/${id}`);
   if (!r.ok) {
     $("verdict-text").textContent = "No such auction on this bulletin";
     return;
