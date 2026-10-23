@@ -267,6 +267,16 @@ enum Cmd {
         #[arg(long)]
         input: PathBuf,
     },
+    /// Prove an age identity decrypts this wallet's seed and derives the named
+    /// account's keys. Prints only OK or an error; never key material.
+    CheckIdentity {
+        #[arg(long)]
+        wallet: PathBuf,
+        #[arg(long)]
+        identity: PathBuf,
+        #[arg(long)]
+        account: String,
+    },
     /// Try to extract a transaction from a PCZT (expected to fail if half-signed).
     TryExtract {
         #[arg(long)]
@@ -341,6 +351,13 @@ fn main() -> Result<()> {
             inspect_item(&wallet, &txid, action, &collection_pk, listing.as_deref())
         }
         Cmd::TryExtract { input } => try_extract(&input),
+        Cmd::CheckIdentity { wallet, identity, account } => {
+            let w = Wallet::open(&wallet)?;
+            let acct = w.account(&account)?;
+            w.ask(&identity, &acct)?;
+            println!("OK: {} decrypts the seed and matches account '{account}' ({:?})", identity.display(), network());
+            Ok(())
+        }
         Cmd::Record { wallet, input } => record(&wallet, &input),
     }
 }
