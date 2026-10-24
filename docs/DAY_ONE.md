@@ -42,3 +42,12 @@ The librustzcash revision pinned here (`eb38d7a`, same as zcash-devtool) has **n
 Action before the post-NU7 re-test: bump to the librustzcash and zcash-devtool releases that set the mainnet height, rebuild, and re-run the testnet and mainnet flows.
 
 `tally-settle` takes its network from each wallet's `keys.toml` and refuses to mix networks in one command. The same binary drives testnet and mainnet.
+
+## Update, Oct 24: NU7 gap closed
+librustzcash published stable releases on Oct 22 with the **mainnet NU7 height set (3,543,405)**: `pczt 0.10.0`, `zcash_client_backend 0.25.0`, `zcash_client_sqlite 0.23.0`, `zcash_primitives 0.31.0`, `zcash_protocol 0.11.0`, `zcash_keys 0.17.0`. Tally now uses them, with no git pins.
+
+zcash-devtool (last commit Oct 17) didn't compile against them: 7 errors, all in commands Tally doesn't use (sighash API rename, a new `BlockSpacing` argument). [`patches/zcash-devtool-stable-releases.patch`](../patches/zcash-devtool-stable-releases.patch) fixes them. Apply it to `zcash/zcash-devtool@0b3436b`.
+
+Verified:
+- Tally on the stable crates opens wallets written by the old devtool, and the old devtool still syncs them. Tested on a copy.
+- A real testnet transaction built by Tally on the stable crates, broadcast by the patched devtool: `c562d50d2089691775429d902898f99f636a0886d3053c3a7cd9d82296b4ad70` (v6, Ironwood only).

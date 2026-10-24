@@ -1,0 +1,254 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 3aa6c5e..2372397 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -35,24 +35,24 @@ uuid = "1"
+ 
+ # Zcash
+ orchard = { version = "0.16", default-features = false }
+-pczt = { version = "=0.10.0-pre.2", features = ["io-finalizer", "orchard", "prover", "signer", "spend-finalizer", "transparent", "tx-extractor"] }
++pczt = { version = "0.10.0", features = ["io-finalizer", "orchard", "prover", "signer", "spend-finalizer", "transparent", "tx-extractor"] }
+ sapling = { package = "sapling-crypto", version = "0.9" }
+-transparent = { package = "zcash_transparent", version = "=0.11.0-pre.2", features = ["test-dependencies", "transparent-inputs"] }
+-zcash_address = "=0.14.0-pre.2"
+-zcash_client_backend = { version = "=0.25.0-pre.2", features = ["lightwalletd-tonic-tls-webpki-roots", "orchard", "pczt", "tor", "unstable"] }
++transparent = { package = "zcash_transparent", version = "0.11.0", features = ["test-dependencies", "transparent-inputs"] }
++zcash_address = "0.14.0"
++zcash_client_backend = { version = "0.25.0", features = ["lightwalletd-tonic-tls-webpki-roots", "orchard", "pczt", "tor", "unstable"] }
+ # `transparent-inputs` is enabled unconditionally: `zcash_client_backend`'s `pczt`
+ # feature (always on here) already forces `zcash_client_backend/transparent-inputs`,
+ # so `zcash_client_sqlite` must match or its `WalletRead`/`WalletWrite` impls fail to
+ # cover the trait's transparent methods.
+-zcash_client_sqlite = { version = "=0.23.0-pre.2", features = ["transparent-inputs", "unstable", "orchard", "serde", "test-dependencies"] }
+-zcash_keys = { version = "=0.17.0-pre.2", features = ["orchard", "sapling", "unstable", "unstable-frost"] }
+-zcash_pool_migration = { version = "=0.2.0-pre.2", features = ["wallet"] }
+-zcash_primitives = "=0.31.0-pre.2"
+-zcash_proofs = { version = "=0.31.0-pre.2", features = ["bundled-prover"] }
+-zcash_protocol = { version = "=0.11.0-pre.1", features = ["local-consensus"] }
++zcash_client_sqlite = { version = "0.23.0", features = ["transparent-inputs", "unstable", "orchard", "serde", "test-dependencies"] }
++zcash_keys = { version = "0.17.0", features = ["orchard", "sapling", "unstable", "unstable-frost"] }
++zcash_pool_migration = { version = "0.2.0", features = ["wallet"] }
++zcash_primitives = "0.31.0"
++zcash_proofs = { version = "0.31.0", features = ["bundled-prover"] }
++zcash_protocol = { version = "0.11.0", features = ["local-consensus"] }
+ zcash_script = "0.6"
+ zip32 = "0.3"
+-zip321 = "=0.10.0-pre.2"
++zip321 = "0.10.0"
+ 
+ # CLI
+ clap = { version = "4.5", features = ["derive", "string", "unstable-styles"] }
+@@ -121,21 +121,3 @@ tui = [
+     "dep:tokio-util",
+     "dep:tui-logger",
+ ]
+-
+-## Builds against librustzcash `main`, which is ahead of the latest published
+-## pre-releases. Pinned to a revision so that a checkout builds against what was tested.
+-## Remove this once these crates are next published.
+-[patch.crates-io]
+-equihash = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-pczt = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_address = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_client_backend = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_client_sqlite = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_encoding = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_keys = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_pool_migration = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_primitives = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_proofs = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_protocol = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zcash_transparent = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+-zip321 = { git = "https://github.com/zcash/librustzcash.git", rev = "eb38d7a373661179dbc083a2fd58b3a6c9b25818" }
+diff --git a/src/commands/inspect/transaction.rs b/src/commands/inspect/transaction.rs
+index fad889f..c15da94 100644
+--- a/src/commands/inspect/transaction.rs
++++ b/src/commands/inspect/transaction.rs
+@@ -21,7 +21,7 @@ use zcash_note_encryption::try_output_recovery_with_ovk;
+ use zcash_primitives::transaction::{
+     Authorization, Transaction, TransactionData, TxId, TxVersion,
+     components::sapling as sapling_serialization,
+-    sighash::{SignableInput, signature_hash},
++    sighash::{PrecomputedSighashData, SignableInput},
+     txid::TxIdDigester,
+ };
+ use zcash_protocol::{
+@@ -180,13 +180,12 @@ pub(crate) fn inspect(
+ 
+         let tx: TransactionData<PrecomputedAuth> =
+             tx.into_data().map_authorization(f_transparent, (), ());
+-        let txid_parts = tx.digest(TxIdDigester);
+-        (tx, txid_parts)
++        PrecomputedSighashData::new(tx)
+     });
+ 
+     let common_sighash = sighash_params
+         .as_ref()
+-        .map(|(tx, txid_parts)| signature_hash(tx, &SignableInput::Shielded, txid_parts));
++        .map(|pre| pre.signature_hash(&SignableInput::Shielded));
+     if let Some(sighash) = &common_sighash
+         && (tx.sprout_bundle().is_some()
+             || tx.sapling_bundle().is_some()
+@@ -207,7 +206,7 @@ pub(crate) fn inspect(
+                     eprintln!("  ⚠️  \"transparentcoins\" has length {}", coins.len());
+                 }
+ 
+-                let (tx, txid_parts) = sighash_params.as_ref().unwrap();
++                let pre = sighash_params.as_ref().unwrap();
+                 for (i, (txin, coin)) in bundle.vin.iter().zip(coins).enumerate() {
+                     eprintln!(
+                         "   - prevout: txid {}, index {}",
+@@ -263,8 +262,7 @@ pub(crate) fn inspect(
+                                         );
+                                     }
+ 
+-                                    let sighash = signature_hash(
+-                                        tx,
++                                    let sighash = pre.signature_hash(
+                                         &SignableInput::Transparent(
+                                             ::transparent::sighash::SignableInput::from_parts(
+                                                 bundle,
+@@ -277,7 +275,6 @@ pub(crate) fn inspect(
+                                             )
+                                             .expect("input index is within bundle bounds"),
+                                         ),
+-                                        txid_parts,
+                                     );
+                                     let msg = secp256k1::Message::from_digest(*sighash.as_ref());
+ 
+diff --git a/src/commands/migration/advance.rs b/src/commands/migration/advance.rs
+index ac3b06e..d219488 100644
+--- a/src/commands/migration/advance.rs
++++ b/src/commands/migration/advance.rs
+@@ -70,7 +70,7 @@ impl Command {
+         let targets = DuenessTargets::new(scanned + 1, tip + 1);
+ 
+         let mut rng = UnwrapErr(SysRng);
+-        let config = AdvanceConfig::new(REORG_SETTLE_DEPTH);
++        let config = AdvanceConfig::new(REORG_SETTLE_DEPTH, zcash_protocol::zip318::BlockSpacing::for_network(&params));
+ 
+         // `advance_migration` plans the next step, verifies it against the store's satisfiability
+         // oracle, and persists every determination it makes along the way -- so the step it
+diff --git a/src/commands/pczt/inspect.rs b/src/commands/pczt/inspect.rs
+index 1454c24..8abfc79 100644
+--- a/src/commands/pczt/inspect.rs
++++ b/src/commands/pczt/inspect.rs
+@@ -14,8 +14,7 @@ use transparent::address::TransparentAddress;
+ use zcash_keys::encoding::AddressCodec;
+ use zcash_primitives::transaction::{
+     TxVersion,
+-    sighash::SignableInput,
+-    sighash_v5::v5_signature_hash,
++    sighash::{PrecomputedSighashData, SignableInput},
+     txid::{TxIdDigester, to_txid},
+ };
+ use zcash_protocol::consensus::{NetworkConstants, Parameters};
+@@ -374,16 +373,17 @@ impl Command {
+                     tx_data.consensus_branch_id(),
+                     &txid_parts,
+                 );
+-                println!("TxID: {txid}");
++                println!("TxID: {txid:?}");
+                 println!("Version: {:?}", tx_data.version());
+ 
+                 if matches!(tx_data.version(), TxVersion::V5) {
++                    let pre = PrecomputedSighashData::new_zip244(tx_data).expect("v5 is ZIP 244");
++                    let tx_data = pre.tx();
+                     if tx_data.sapling_bundle().is_some() || tx_data.orchard_bundle().is_some() {
+-                        let shielded_sighash =
+-                            v5_signature_hash(&tx_data, &SignableInput::Shielded, &txid_parts);
++                        let shielded_sighash = pre.signature_hash(&SignableInput::Shielded);
+                         println!(
+                             "Sighash for shielded components: {}",
+-                            hex::encode(shielded_sighash)
++                            hex::encode(shielded_sighash.as_ref())
+                         );
+                     }
+ 
+@@ -392,8 +392,7 @@ impl Command {
+                         for (index, (hash_type, redeem_script, script_pubkey, value, _, _)) in
+                             transparent_inputs.into_iter().enumerate()
+                         {
+-                            let sighash = v5_signature_hash(
+-                                &tx_data,
++                            let sighash = pre.signature_hash(
+                                 &SignableInput::Transparent(
+                                     transparent::sighash::SignableInput::from_parts(
+                                         transparent_bundle,
+@@ -405,10 +404,9 @@ impl Command {
+                                     )
+                                     .expect("input index is within bundle bounds"),
+                                 ),
+-                                &txid_parts,
+                             );
+ 
+-                            println!("- {index}: {}", hex::encode(sighash));
++                            println!("- {index}: {}", hex::encode(sighash.as_ref()));
+                         }
+                     }
+                 }
+diff --git a/src/commands/pczt/pay_manual.rs b/src/commands/pczt/pay_manual.rs
+index 59b9e3d..26d4601 100644
+--- a/src/commands/pczt/pay_manual.rs
++++ b/src/commands/pczt/pay_manual.rs
+@@ -234,7 +234,7 @@ impl Command {
+                 &params,
+                 target_height.into(),
+                 target_height,
+-                &PoolMigrationParams::new(AnchorRetentionInterval::ZIP_318),
++                &PoolMigrationParams::new(zcash_protocol::zip318::BlockSpacing::for_network(&params), AnchorRetentionInterval::ZIP_318),
+                 &transparent_inputs[..],
+                 &transparent_outputs,
+                 &(
+diff --git a/src/commands/pczt/update_with_signature.rs b/src/commands/pczt/update_with_signature.rs
+index ee082e9..d4f29fb 100644
+--- a/src/commands/pczt/update_with_signature.rs
++++ b/src/commands/pczt/update_with_signature.rs
+@@ -7,7 +7,7 @@ use pczt::{
+ };
+ use tokio::io::{AsyncReadExt, AsyncWriteExt, stdin, stdout};
+ use zcash_primitives::transaction::{
+-    TransactionData, TxDigests, sighash::SignableInput, sighash_v5::v5_signature_hash,
++    sighash::{PrecomputedSighashData, SignableInput},
+     txid::TxIdDigester,
+ };
+ use zcash_protocol::PoolType;
+@@ -36,13 +36,14 @@ impl Command {
+         let pczt = Pczt::parse(&buf).map_err(|e| anyhow!("Failed to read PCZT: {:?}", e))?;
+ 
+         let tx_data = pczt.clone().into_effects().map_err(|e| anyhow!("{e:?}"))?;
+-        let txid_parts = tx_data.digest(TxIdDigester);
++        let pre = PrecomputedSighashData::new_zip244(tx_data)
++            .map_err(|_| anyhow!("transaction is not v5 or later"))?;
+ 
+         let signer = low_level_signer::Signer::new(pczt);
+ 
+         let signer = match self.pool {
+             PoolType::Transparent => {
+-                add_transparent(signer, &tx_data, &txid_parts, self.index, sig_bytes)
++                add_transparent(signer, &pre, self.index, sig_bytes)
+             }
+             PoolType::SAPLING => Err(anyhow!("TODO: Maybe support this")),
+             PoolType::ORCHARD => Err(anyhow!("TODO: Maybe support this")),
+@@ -76,8 +77,7 @@ fn parse_pool_type(s: &str) -> anyhow::Result<PoolType> {
+ 
+ fn add_transparent(
+     signer: low_level_signer::Signer,
+-    tx_data: &TransactionData<EffectsOnly>,
+-    txid_parts: &TxDigests<Blake2bHash>,
++    pre: &PrecomputedSighashData<EffectsOnly>,
+     index: usize,
+     sig_bytes: Vec<u8>,
+ ) -> anyhow::Result<low_level_signer::Signer> {
+@@ -102,10 +102,7 @@ fn add_transparent(
+                 input.append_signature(
+                     index,
+                     |input| {
+-                        v5_signature_hash(tx_data, &SignableInput::Transparent(input), txid_parts)
+-                            .as_ref()
+-                            .try_into()
+-                            .unwrap()
++                        *pre.signature_hash(&SignableInput::Transparent(input)).as_ref()
+                     },
+                     sig,
+                 )?;
