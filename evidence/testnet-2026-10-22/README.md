@@ -22,7 +22,7 @@ ironwood actions 3
 ironwood balance 15000 zat   (the ZIP 317 fee; the only public value)
 ```
 
-A mint and a sale cannot be told apart. No address, amount, memo or item appears on chain.
+No address, amount, memo or item appears on chain; the only public value is the fee. Tally transactions do differ in action count (mint, bond, sale and refund each have their own shape), so we don't claim one can't be told from another.
 
 ## Acceptance checks
 | Check | Result |

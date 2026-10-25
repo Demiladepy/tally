@@ -17,16 +17,18 @@ The full public record is in [`auction-log.json`](auction-log.json): manifest, 5
 | Fund 5 bidder accounts, 0.02 TAZ each | `923013c0416c28bd56476e0d370491d1c80adfb04426b32fada353f5632c484c` |
 | Escrow fee float | `a3d696333b287dabbea93e96d704bc63bb901f30c80b38962d9a75c723b3c7d2` |
 | 5 sealed ballots, receipted as entries #0–#4 | `auction-log.json` → `entries` |
-| 5 bonds with `TLYB` memos | `ca04e9b4…`, `ccfe33e9…`, `788e3c9e…`, `80514feb…`, `92c938f4…` |
+| 5 bonds with `TLYB` memos | shielded; not listed here |
 | Close at height 4529569, root `e86af265…` | `close` |
 | Escrow scan: 5 bonds of 100000 zat. Members A and C attest 5 of 5 bonded. | `bonds` |
 | Clearing: T₈=4, T₁₂=2, T₁₄=1, T₁₃=1. Then c₁₂ for each of the 5 ballots, since T₁₂ = N is an exact fill and needs no tie-break. | `decryptions` |
 | **Result: cleared at level 12 = 0.012 TAZ, 2 winners** | `result` |
-| Winner (bidder 4) buys item 0 | `b997e5c3a3757a339d59557464b8a758c251dc051d4c26d1173411e6ddc89281` |
-| Winner (bidder 5) buys item 1 | `965332c0510f9a28f52d138fae2fcea60183991cb88d8635a46cf27edfcc85a8` |
+| A winner buys item 0 | `b997e5c3a3757a339d59557464b8a758c251dc051d4c26d1173411e6ddc89281` |
+| The other winner buys item 1 | `965332c0510f9a28f52d138fae2fcea60183991cb88d8635a46cf27edfcc85a8` |
 | Refund of all 5 bonds to one-time addresses, 0 forfeits | `27d097a39d3447afa894e61b9c05c55b837b5bcf64050f8f7e4cc53208f4dd59` |
 
-The bidders' private maxima were 0.0035, 0.009, 0.009, 0.012 and 0.016 TAZ. The public sees none of these. The clearing price is the uniform 0.012 that both winners paid.
+The bidders' private maxima are not published here: a record that pairs maxima with entries would de-anonymise the sample log. (An earlier version of this file did list them, for a demo where one person played all five bidders.) The clearing price is the uniform 0.012 that both winners paid.
+
+This log is a **legacy v1** manifest: it predates the id-binding and committee endorsements, so the verifier labels it legacy and new ballots can't be sealed against it.
 
 ## Public verifier (`tally-committee verify`), final run
 ```
@@ -45,9 +47,8 @@ PASS Settlements signed by the seller, one per winner (2 of 2 winners settled)
 ## Checks after mining
 | Check | Result |
 |---|---|
-| Winner 4 holds item 0 | `item_index 0`, `hop 1`, `seller_sig_ok true`, `rho==prev_nf true` |
-| Winner 5 holds item 1 | `item_index 1`, `hop 1`, `seller_sig_ok true`, `rho==prev_nf true` |
-| Every bidder got its bond back | 0.001 TAZ each into `bidder-a3-1` … `bidder-a3-5` |
+| Each winner holds its item | `item_index 0` / `1`, `hop 1`, `seller_sig_ok true`, `rho==prev_nf true` |
+| Every bidder got its bond back | 0.001 TAZ each |
 | A single committee member can't clear | `need at least t = 2 members` |
 | A loser claims an item | Seller refuses: `claimant is not a winner` |
 | A sale without a win claim | Seller refuses: `auction sale requires a win claim` |

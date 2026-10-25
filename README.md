@@ -37,7 +37,7 @@ Clearing a sealed-bid auction is a **private vote on prices**. Each bidder says 
 Full table: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 - **Your bid** never leaves your browser. The bulletin, the seller and the public see only ciphertexts. A colluding committee quorum could decrypt ballots, and this demo's committee is not independent.
 - **What is public:** the ⌈log₂(L+1)⌉ totals on the search path, the clearing price, the winners' anonymous ballot keys, and (for opened cells) which side of the clearing price an anonymous ballot fell on.
-- **Who you are:** the bulletin stores no IPs, user agents or timings. Ballots carry no addresses. Every address that leaves a wallet belongs to an account used once.
+- **Who you are:** the bulletin stores no IPs, user agents or timings, and its errors never echo what you sent. Ballots carry no addresses. Refund addresses must be Orchard-only. The bulletin and the escrow must be run by different parties, and bidders should use Tor (see `docs/THREAT_MODEL.md` for what is disclosed rather than hidden).
 - **Payments and items:** shielded Ironwood notes. A sold item's destination is redacted even from the seller.
 
 ## Honest limits

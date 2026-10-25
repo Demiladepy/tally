@@ -13,11 +13,17 @@
 # committee (once): keygen ×3, deal ×3, finish ×3        -> committee.json (public), mJ.secret (private)
 tally-bulletin --listen 127.0.0.1:8787 --data ./data --key ./bulletin.key
 
-# seller
+# seller: a v2 draft (auction id = hash of the manifest). Use a fresh escrow
+# account per auction: its address is public in the manifest.
 tally-settle auction-create --wallet S --record mint.json --committee committee.json \
-  --escrow-wallet E --escrow-account escrow --forfeit-account forfeit \
+  --escrow-wallet E --escrow-account escrow-ID --forfeit-account forfeit \
   --supply 2 --ladder 100000:16 --bond-zat 100000 --close-in 30 --min-batch 5 \
-  --bulletin http://127.0.0.1:8787 --out auction.json
+  --bulletin http://127.0.0.1:8787 --draft draft.json --out auction.json
+# every member checks the draft against its own committee.json and endorses
+tally-committee endorse --j 1 --secret m1.secret --committee committee.json --manifest draft.json --out e1.json
+#   (same for members 2 and 3)
+tally-settle auction-publish --auction auction.json --draft draft.json --endorsements e1.json,e2.json,e3.json
+# The bulletin and the escrow must be run by different parties (THREAT_MODEL.md).
 
 # each bidder (own account per bid)
 tally-settle bid --wallet B --identity B.age --account bidder-k --bulletin URL --auction-id ID \
@@ -27,7 +33,8 @@ tally-settle record --wallet B --input bond-k.pczt      # wallet learns its spen
 
 # at the close height
 tally-settle auction-close --auction auction.json
-tally-settle scan-bonds --wallet E --account escrow --auction-id ID --out bonds.json   # after `wallet enhance`
+tally-settle scan-bonds --wallet E --account escrow --auction-id ID \
+  --out bonds.json --escrow-out escrow-refunds.json     # after `wallet enhance`; only bonds.json goes to the committee
 tally-committee attest --j 1 --secret m1.secret --log URL/v1/auctions/ID --bonds bonds.json --out sig-1.json
 tally-committee attest --j 3 --secret m3.secret --log ... --out sig-3.json
 tally-committee post-bonds --log ... --bonds bonds.json --sigs sig-1.json,sig-3.json
@@ -42,7 +49,7 @@ zcash-devtool pczt -w S send-without-storing final.pczt
 tally-settle settle-post --auction auction.json --p P --txid TXID
 
 # escrow
-tally-settle refund --wallet E --identity E.age --account escrow --bulletin URL --bonds bonds.json \
+tally-settle refund --wallet E --identity E.age --account escrow --bulletin URL --bonds escrow-refunds.json \
   --forfeit-unsettled --out refund.pczt
 zcash-devtool pczt -w E send-without-storing refund.pczt
 
