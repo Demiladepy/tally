@@ -9,11 +9,15 @@ Deadline: Oct 28, 23:59 UTC (00:59 Oct 29 Lagos). Target: submit by 18:00 Lagos 
 - [x] README: pitch, how it works, what's hidden, honest limits, one-command run, credits
 - [x] Threat model (`docs/THREAT_MODEL.md`)
 - [x] NU7-ready libraries (stable releases, mainnet NU7 height set)
+- [x] Adversarial leak review done; fixes in code, limits disclosed in `docs/THREAT_MODEL.md`
+- [x] Sale re-proven on testnet after the `rcv` fix (`evidence/testnet-2026-10-25-rcv`)
+- [x] Open v2 auction ready for the recording (see below)
 - [ ] 2–3 minute video (script below)
 - [ ] Tag `zecathon-submission` on the final commit
 - [ ] Track selected: Private Markets
 - [ ] Shielded ZEC address for prize payout (a fresh one from your own wallet)
-- [ ] Optional: a funded mainnet run (wallets ready; needs ~0.02 ZEC)
+- [ ] Submit by 18:00 Lagos, Oct 28
+- [ ] Optional: a funded mainnet run (wallets ready; needs ~0.02 ZEC; not required by any rule we could find)
 - [ ] Optional: a hosted bulletin so judges can bid live
 - [ ] Re-test after NU7 activates on mainnet (~Nov 5, height 3,543,405)
 
@@ -26,11 +30,14 @@ Deadline: Oct 28, 23:59 UTC (00:59 Oct 29 Lagos). Target: submit by 18:00 Lagos 
 
 **1:20–1:55: the reveal (screen: verify page).** "At close, a 2-of-3 committee opened 4 of the 16 totals. Everything else stays sealed: see the hatched levels. The clearing price is 0.012, and both winners settled in one atomic shielded transaction each." Scroll the checks as they tick green. "These ten checks just ran in my browser. Drop in a tampered log and they go red." Show a red run.
 
-**1:55–2:20: the guarantees.** "No bid is ever decrypted. No address is published. Payments are Ironwood-only, and the seller can't even see where the item went. What we disclose: a few anonymous totals, the price, and the anonymous winners. Honest limits are in the README: the escrow is one key today, and this demo committee is one person."
+**1:55–2:20: the guarantees.** "No bid is ever decrypted. No bidder's address is ever published: the only public addresses are the auction's own escrow and forfeit addresses, fresh for each auction. Payments are Ironwood-only, and the seller can't even see where the item went. What we disclose: a few anonymous totals, the price, and the anonymous winners. Honest limits are in the README: the escrow is one key today, and this demo committee is one person."
 
 **2:20–2:30: Monday.** "A seller runs a drop. Instead of a trust-me auction, bidders get privacy and proof together. The repo and the live verifier are linked below."
 
 ### Recording tips
-- Use the live verify link, plus a local `bash scripts/run-local.sh` for the bid flow.
-- Pre-create an open testnet auction so the bid page has a case to show.
+- Use the live verify link for the reveal.
+- For the bid flow, start the local bulletin (it keeps its data, so the case below survives restarts):
+  `tally-bulletin --listen 127.0.0.1:8787 --data ../bulletin-run/data --key ../bulletin-run/bulletin.key --web ./web`
+  then open http://127.0.0.1:8787/bid.html?auction=d9446c611c7563b334fd6ef4d2bb9e3a13c292676eb09848722546655be5bd05
+  (v2 manifest, endorsed by all 3 members, 2 freshly minted items, open until testnet block 4557966, about Oct 30).
 - For the red run, save `auction-log.json`, edit one `price_zat`, and drop the file on the page.
