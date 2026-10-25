@@ -3590,6 +3590,8 @@ dependencies = [
  "serde_json",
  "tally-crypto",
  "tally-zcash",
+ "zcash_address",
+ "zcash_protocol",
 ]
 
 [[package]]
@@ -3601,6 +3603,8 @@ dependencies = [
  "rand_core 0.6.4",
  "tally-crypto",
  "thiserror 2.0.21",
+ "zcash_address",
+ "zcash_protocol",
 ]
 
 [[package]]

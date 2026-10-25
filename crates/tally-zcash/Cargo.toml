@@ -11,6 +11,8 @@ tally-crypto = { path = "../tally-crypto" }
 rand_core = "0.6"
 thiserror = "2"
 hex = "0.4"
+zcash_address = "0.14"
+zcash_protocol = "0.11"
 
 [dev-dependencies]
 rand_chacha = "0.3"

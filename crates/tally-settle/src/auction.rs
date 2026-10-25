@@ -19,7 +19,7 @@ use pczt::Pczt;
 use serde::{Deserialize, Serialize};
 use tally_crypto::auction::{AuctionLog, Settlement};
 use tally_crypto::ballot::{self, Ballot};
-use tally_crypto::manifest::{Close, Committee, Manifest, Receipt};
+use tally_crypto::manifest::{Close, Committee, Endorsement, Manifest, Receipt, MANIFEST_V2};
 use tally_crypto::schnorr::Signature;
 use tally_crypto::{codec, g};
 use tally_zcash::memo::Bond;
@@ -60,6 +60,20 @@ pub struct BidRecord {
 pub struct BondsFile {
     pub auction_id: String,
     pub bonds: Vec<BondSeen>,
+}
+
+/// What the committee gets: which ballots are bonded, and nothing about who
+/// bonded them. Refund addresses and txids stay in the escrow-only file.
+#[derive(Serialize, Deserialize)]
+pub struct CommitteeBondsFile {
+    pub auction_id: String,
+    pub bonds: Vec<CommitteeBond>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CommitteeBond {
+    pub ballot_hash: String,
+    pub value_zat: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -186,10 +200,13 @@ pub fn create(
     settle_window: u32,
     min_batch: u64,
     bulletin: &str,
+    draft: &Path,
     out: &Path,
 ) -> Result<()> {
-    if out.exists() {
-        bail!("{} exists; refusing to overwrite", out.display());
+    for p in [out, draft] {
+        if p.exists() {
+            bail!("{} exists; refusing to overwrite", p.display());
+        }
     }
     #[derive(Deserialize)]
     struct MintRec {
@@ -209,11 +226,9 @@ pub fn create(
 
     let mut r6 = rand_core_06::OsRng;
     let seller_sk = tally_crypto::random_scalar(&mut r6);
-    let mut auction_id = [0u8; 32];
-    rand_core_06::RngCore::fill_bytes(&mut r6, &mut auction_id);
     let mut m = Manifest {
-        v: 1,
-        auction_id,
+        v: MANIFEST_V2,
+        auction_id: [0; 32],
         collection_id: codec::bytes32_from_hex(&mint.collection_id).map_err(|e| anyhow!("{e}"))?,
         supply,
         ladder_zat: (1..=levels).map(|i| i * step).collect(),
@@ -227,17 +242,44 @@ pub fn create(
         forfeit_ua,
         seller_pk: g() * seller_sk,
         sig: Signature { r: g(), s: tally_crypto::Scalar::from(0u64) },
+        endorsements: vec![],
     };
+    // v2: the id is the hash of the contents, so a link naming it pins the
+    // committee key, escrow and ladder.
+    m.bind_id();
     m.sign(&seller_sk, &mut r6);
-    m.verify().map_err(|e| anyhow!("{e}"))?;
-    let _: AuctionLog = post(&format!("{bulletin}/v1/auctions"), &m)?;
+    m.verify_draft().map_err(|e| anyhow!("{e}"))?;
     let rec = SellerAuction {
-        auction_id: hex::encode(auction_id),
+        auction_id: hex::encode(m.auction_id),
         seller_sk: codec::scalar_to_hex(&seller_sk),
         bulletin: bulletin.to_string(),
     };
     fs::write(out, serde_json::to_string_pretty(&rec)?)?;
-    println!("auction {} open: supply {supply}, {levels} levels of {step} zat, closes at height {}", rec.auction_id, m.close_height);
+    fs::write(draft, serde_json::to_string_pretty(&m)?)?;
+    println!(
+        "draft auction {}: supply {supply}, {levels} levels of {step} zat, closes at height {}.\n\
+         Send {} to every committee member for `tally-committee endorse`, then run `auction-publish`.",
+        rec.auction_id,
+        m.close_height,
+        draft.display()
+    );
+    Ok(())
+}
+
+/// Attach every member's endorsement to the draft and open the auction.
+pub fn publish(record: &Path, draft: &Path, endorsements: &[std::path::PathBuf]) -> Result<()> {
+    let rec: SellerAuction = serde_json::from_str(&fs::read_to_string(record)?)?;
+    let mut m: Manifest = serde_json::from_str(&fs::read_to_string(draft)?)?;
+    if hex::encode(m.auction_id) != rec.auction_id {
+        bail!("draft is for a different auction");
+    }
+    m.endorsements = endorsements
+        .iter()
+        .map(|p| -> Result<Endorsement> { Ok(serde_json::from_str(&fs::read_to_string(p)?)?) })
+        .collect::<Result<_>>()?;
+    m.verify_current().map_err(|e| anyhow!("{e}"))?;
+    let _: AuctionLog = post(&format!("{}/v1/auctions", rec.bulletin), &m)?;
+    println!("auction {} open, endorsed by all {} members", rec.auction_id, m.committee.key.n);
     Ok(())
 }
 
@@ -370,7 +412,10 @@ pub fn check_claim(log: &AuctionLog, claim: &Claim, listing_hash: &str, price_za
 
 // ---------- escrow ----------
 
-pub fn scan_bonds(wallet: &Path, account: &str, auction_id: &str, out: &Path) -> Result<()> {
+/// Writes two files: `out` for the committee (ballot hashes and amounts only)
+/// and `escrow_out`, private to the escrow, which adds refund addresses and
+/// txids. Never hand `escrow_out` to anyone.
+pub fn scan_bonds(wallet: &Path, account: &str, auction_id: &str, out: &Path, escrow_out: &Path) -> Result<()> {
     let w = Wallet::open(wallet)?;
     let acct = w.account(account)?;
     let want = codec::bytes32_from_hex(auction_id).map_err(|e| anyhow!("{e}"))?;
@@ -389,9 +434,14 @@ pub fn scan_bonds(wallet: &Path, account: &str, auction_id: &str, out: &Path) ->
             refund_ua: b.refund_ua,
         });
     }
+    let committee = CommitteeBondsFile {
+        auction_id: auction_id.to_string(),
+        bonds: bonds.iter().map(|b| CommitteeBond { ballot_hash: b.ballot_hash.clone(), value_zat: b.value_zat }).collect(),
+    };
     let f = BondsFile { auction_id: auction_id.to_string(), bonds };
-    fs::write(out, serde_json::to_string_pretty(&f)?)?;
-    println!("{} bonds for this auction", f.bonds.len());
+    fs::write(out, serde_json::to_string_pretty(&committee)?)?;
+    fs::write(escrow_out, serde_json::to_string_pretty(&f)?)?;
+    println!("{} bonds; committee file {} (no addresses), escrow-only file {}", f.bonds.len(), out.display(), escrow_out.display());
     Ok(())
 }
 

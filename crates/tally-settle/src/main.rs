@@ -32,7 +32,7 @@ use tally_zcash::memo::Item;
 use zcash_client_backend::data_api::{Account, WalletRead};
 use zcash_primitives::transaction::builder::{BuildConfig, Builder, BundlePadding, PcztResult};
 use zcash_primitives::transaction::fees::zip317;
-use zcash_protocol::consensus::{BlockHeight, Network};
+use zcash_protocol::consensus::{BlockHeight, BranchId, Network};
 use zcash_protocol::memo::MemoBytes;
 use zcash_protocol::value::Zatoshis;
 use zcash_protocol::TxId;
@@ -43,8 +43,12 @@ use wallet::{fresh_address, network, Acct, Wallet};
 /// Tries before giving up on getting the carrier spend and its successor
 /// output into the same Action (each try succeeds with p ≈ 1/num_actions).
 const MAX_BIND_TRIES: usize = 64;
-/// Blocks a buyer-signed PCZT stays valid (25 s blocks after NU7, ~50 min).
-const EXPIRY_DELTA: u32 = 120;
+/// Expiry delta every standard wallet uses at `target` (ZIP 203 / ZIP 218):
+/// 40 blocks before NU7, 120 after, ~50 minutes either way. Using anything
+/// else would make Tally's transactions stand out on chain.
+fn expiry_delta(target: BlockHeight) -> u32 {
+    zcash_primitives::transaction::builder::default_tx_expiry_delta(BranchId::for_height(&network(), target))
+}
 /// Blocks a listing stays valid; the buyer's witness must exist at its anchor.
 const LISTING_TTL: u32 = 80;
 
@@ -171,8 +175,20 @@ enum Cmd {
         min_batch: u64,
         #[arg(long)]
         bulletin: String,
+        /// The unendorsed manifest, for the committee to endorse.
+        #[arg(long)]
+        draft: PathBuf,
         #[arg(long)]
         out: PathBuf,
+    },
+    /// Seller: attach every committee member's endorsement and open the auction.
+    AuctionPublish {
+        #[arg(long)]
+        auction: PathBuf,
+        #[arg(long)]
+        draft: PathBuf,
+        #[arg(long, value_delimiter = ',')]
+        endorsements: Vec<PathBuf>,
     },
     /// Seller: freeze the log at its current head.
     AuctionClose {
@@ -231,8 +247,12 @@ enum Cmd {
         account: String,
         #[arg(long)]
         auction_id: String,
+        /// For the committee: ballot hashes and amounts only.
         #[arg(long)]
         out: PathBuf,
+        /// Escrow-only: adds refund addresses and txids. Keep private.
+        #[arg(long)]
+        escrow_out: PathBuf,
     },
     /// Escrow: refund bonds (forfeiting unsettled winners' bonds if asked).
     Refund {
@@ -329,11 +349,13 @@ fn main() -> Result<()> {
             settle_window,
             min_batch,
             bulletin,
+            draft,
             out,
         } => auction::create(
             &wallet, &record, &committee, &escrow_wallet, &escrow_account, &forfeit_account, supply, &ladder,
-            bond_zat, close_in, settle_window, min_batch, &bulletin, &out,
+            bond_zat, close_in, settle_window, min_batch, &bulletin, &draft, &out,
         ),
+        Cmd::AuctionPublish { auction, draft, endorsements } => auction::publish(&auction, &draft, &endorsements),
         Cmd::AuctionClose { auction } => auction::close(&auction),
         Cmd::SettlePost { auction, p, txid } => auction::settle_post(&auction, &p, &txid),
         Cmd::Fund { wallet, identity, payer, accounts, value_zat, out } => {
@@ -342,7 +364,9 @@ fn main() -> Result<()> {
         Cmd::Bid { wallet, identity, account, bulletin, auction_id, max_price_zat, record, out } => {
             auction::bid(&wallet, &identity, &account, &bulletin, &auction_id, max_price_zat, &record, &out)
         }
-        Cmd::ScanBonds { wallet, account, auction_id, out } => auction::scan_bonds(&wallet, &account, &auction_id, &out),
+        Cmd::ScanBonds { wallet, account, auction_id, out, escrow_out } => {
+            auction::scan_bonds(&wallet, &account, &auction_id, &out, &escrow_out)
+        }
         Cmd::Refund { wallet, identity, account, bulletin, bonds, forfeit_unsettled, out } => {
             auction::refund(&wallet, &identity, &account, &bulletin, &bonds, forfeit_unsettled, &out)
         }
@@ -395,7 +419,7 @@ fn builder(target: BlockHeight, anchor: orchard::Anchor) -> Builder<Network, ()>
             ironwood_padding: BundlePadding::DEFAULT,
         },
     )
-    .with_expiry_height(target + EXPIRY_DELTA)
+    // Builder::new already applies the wallet-default expiry for `target`.
 }
 
 fn memo(item: &Item) -> Result<MemoBytes> {
@@ -586,7 +610,7 @@ fn sale_build(
     let change = fund.note().value().inner() - l.price_zat - fee;
     let change_to = fresh_address(&payer.fvk, Scope::Internal);
     let next = memo(&c.item.next_hop())?;
-    let expiry_cap = l.valid_until.min(u32::from(target) + EXPIRY_DELTA);
+    let expiry_cap = l.valid_until.min(u32::from(target) + expiry_delta(target));
 
     for attempt in 1..=MAX_BIND_TRIES {
         let mut b = builder(target, c.anchor).with_expiry_height(BlockHeight::from(expiry_cap));
@@ -644,9 +668,24 @@ fn sale_build(
                         a.clear_output_proprietary();
                     });
                 }
+                // rcv opens each action's value commitment: with it the seller
+                // could solve cv_net for the funding note's value and change.
+                // After proving it is only needed folded into bsk, so drop it
+                // from every action.
+                r.redact_actions(|mut a| a.clear_rcv());
             })
             .finish();
         let bytes = pczt_bytes(p)?;
+        let mut rcv_left = 0;
+        Verifier::new(parse_pczt(&bytes)?)
+            .with_ironwood::<Infallible, _>(|bundle| {
+                rcv_left = bundle.actions().iter().filter(|a| a.rcv().is_some()).count();
+                Ok(())
+            })
+            .map_err(|e| anyhow!("verify: {e:?}"))?;
+        if rcv_left > 0 {
+            bail!("redaction self-check failed: {rcv_left} action(s) still carry rcv");
+        }
 
         // Self-check: none of these may survive redaction.
         let secrets: [(&str, Vec<u8>); 5] = [

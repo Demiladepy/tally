@@ -37,6 +37,8 @@ pub enum MemoError {
     Malformed,
     #[error("seller signature invalid")]
     BadSignature,
+    #[error("refund address must be a unified address with only an Orchard receiver")]
+    NotOrchardOnly,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -142,6 +144,19 @@ pub struct Bond {
     pub refund_ua: String,
 }
 
+/// A refund address must be a unified address whose only receiver is
+/// Orchard: a transparent or Sapling receiver riding along in the memo would
+/// hand the escrow a linkable address it never needs.
+pub fn require_orchard_only_ua(ua: &str) -> Result<(), MemoError> {
+    use zcash_address::unified::{self, Container, Encoding};
+    let (_, _, addr) = unified::Address::decode(ua).map_err(|_| MemoError::NotOrchardOnly)?;
+    let items = addr.items();
+    if items.is_empty() || !items.iter().all(|r| matches!(r, unified::Receiver::Orchard(_))) {
+        return Err(MemoError::NotOrchardOnly);
+    }
+    Ok(())
+}
+
 /// Text tag for bond memos. Text (not ZIP 302 binary) because most wallets
 /// only send UTF-8 memos, and a user can paste this one by hand.
 const BOND_TEXT_TAG: &str = "TLYB1";
@@ -154,6 +169,7 @@ impl Bond {
 
     /// The memo as wallets send it: the text, zero-padded to 512 bytes.
     pub fn encode(&self) -> Result<[u8; MEMO_LEN], MemoError> {
+        require_orchard_only_ua(&self.refund_ua)?;
         let t = self.text();
         if t.len() > MEMO_LEN || !self.refund_ua.chars().all(|c| c.is_ascii_alphanumeric()) {
             return Err(MemoError::TooLong);
@@ -297,9 +313,35 @@ mod tests {
         assert_eq!(Item::decode(&m), Err(MemoError::WrongTag));
     }
 
+    fn ua(receivers: Vec<zcash_address::unified::Receiver>) -> String {
+        use zcash_address::unified::{Address, Encoding, Revision, Uitem};
+        let items = receivers.into_iter().map(Uitem::Data).collect();
+        Address::try_from_items(Revision::R0, items)
+            .unwrap()
+            .encode(&zcash_protocol::consensus::NetworkType::Test)
+    }
+
+    #[test]
+    fn refund_ua_must_be_orchard_only() {
+        use zcash_address::unified::Receiver;
+        let orchard_only = ua(vec![Receiver::Orchard([7; 43])]);
+        assert_eq!(require_orchard_only_ua(&orchard_only), Ok(()));
+        let with_transparent = ua(vec![Receiver::Orchard([7; 43]), Receiver::P2pkh([9; 20])]);
+        assert_eq!(require_orchard_only_ua(&with_transparent), Err(MemoError::NotOrchardOnly));
+        let with_sapling = ua(vec![Receiver::Orchard([7; 43]), Receiver::Sapling([8; 43])]);
+        assert_eq!(require_orchard_only_ua(&with_sapling), Err(MemoError::NotOrchardOnly));
+        assert_eq!(require_orchard_only_ua("utest1notreal"), Err(MemoError::NotOrchardOnly));
+        let bond = Bond { auction_id: [1; 32], ballot_hash: [2; 32], refund_ua: with_transparent };
+        assert_eq!(bond.encode(), Err(MemoError::NotOrchardOnly));
+    }
+
     #[test]
     fn bond_text_memo_is_plain_ascii_and_tolerates_whitespace() {
-        let bond = Bond { auction_id: [0xab; 32], ballot_hash: [0x01; 32], refund_ua: "utest1abc".into() };
+        let bond = Bond {
+            auction_id: [0xab; 32],
+            ballot_hash: [0x01; 32],
+            refund_ua: ua(vec![zcash_address::unified::Receiver::Orchard([7; 43])]),
+        };
         let m = bond.encode().unwrap();
         assert!(m[0] < 0xF5, "ZIP 302 text memo");
         assert!(std::str::from_utf8(&m[..bond.text().len()]).is_ok());
@@ -322,10 +364,11 @@ mod tests {
         let bond = Bond {
             auction_id: [1; 32],
             ballot_hash: [2; 32],
-            refund_ua: "utest1".to_string() + &"q".repeat(200),
+            refund_ua: ua(vec![zcash_address::unified::Receiver::Orchard([5; 43])]),
         };
         assert_eq!(Bond::decode(&bond.encode().unwrap()).unwrap(), bond);
         let too_long = Bond { refund_ua: "x".repeat(500), ..bond };
-        assert_eq!(too_long.encode(), Err(MemoError::TooLong));
+        // Not a UA at all, so the Orchard-only check refuses it first.
+        assert_eq!(too_long.encode(), Err(MemoError::NotOrchardOnly));
     }
 }

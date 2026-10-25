@@ -6,6 +6,10 @@
 //!   tally-committee deal   --j 1 --n 3 --t 2 --recipients age1..,age1..,age1.. --out dealing-1.json
 //!   tally-committee finish --j 1 --identity m1.age --dealings dealing-1.json,dealing-2.json,dealing-3.json
 //!                          --names A,B,C --secret m1.secret --public committee.json
+//! Before open (v2 manifests), each member checks the seller's draft against
+//! its own committee.json and endorses it:
+//!   tally-committee endorse --j 1 --secret m1.secret --committee committee.json
+//!                           --manifest draft.json --out endorse-1.json
 //! After close:
 //!   tally-committee attest --j 1 --secret m1.secret --log URL --bonds bonds.json --out sig-1.json
 //!   tally-committee post-bonds --log URL --bonds bonds.json --sigs sig-1.json,sig-3.json
@@ -34,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use tally_crypto::auction::{self, AuctionLog, BondAttestation, MemberSig};
 use tally_crypto::codec;
 use tally_crypto::dkg::{self, CommitteeKey};
-use tally_crypto::manifest::Committee;
+use tally_crypto::manifest::{Committee, Manifest};
 use tally_crypto::threshold::{self, DecryptionShare};
 use tally_crypto::{Point, Scalar};
 
@@ -90,6 +94,21 @@ enum Cmd {
         log: String,
         #[arg(long)]
         bonds: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Endorse a seller's v2 draft manifest: refuses unless it names exactly
+    /// this committee and passes every other check.
+    Endorse {
+        #[arg(long)]
+        j: u32,
+        #[arg(long)]
+        secret: PathBuf,
+        /// This committee's public file from `finish`.
+        #[arg(long)]
+        committee: PathBuf,
+        #[arg(long)]
+        manifest: PathBuf,
         #[arg(long)]
         out: PathBuf,
     },
@@ -156,12 +175,16 @@ struct DealingFile {
 
 /// What `tally-settle scan-bonds` writes from the escrow account.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BondsFile {
     auction_id: String,
     bonds: Vec<BondSeen>,
 }
 
 #[derive(Deserialize)]
+// deny_unknown_fields: the committee must never receive refund addresses or
+// txids. Handing it the escrow-only file is refused rather than ignored.
+#[serde(deny_unknown_fields)]
 struct BondSeen {
     ballot_hash: String,
     value_zat: u64,
@@ -172,6 +195,7 @@ fn main() -> Result<()> {
         Cmd::Keygen { identity } => keygen(&identity),
         Cmd::Deal { j, n, t, recipients, out } => deal(j, n, t, &recipients, &out),
         Cmd::Finish { j, identity, dealings, names, secret, public } => finish(j, &identity, &dealings, &names, &secret, &public),
+        Cmd::Endorse { j, secret, committee, manifest, out } => endorse(j, &secret, &committee, &manifest, &out),
         Cmd::Attest { j, secret, log, bonds, out } => attest(j, &secret, &log, &bonds, &out),
         Cmd::PostBonds { log, bonds, sigs } => post_bonds(&log, &bonds, &sigs),
         Cmd::Share { j, secret, log, target, out } => share(j, &secret, &log, &target, &out),
@@ -308,6 +332,26 @@ fn bonded_indices(log: &AuctionLog, bonds: &Path) -> Result<Vec<u64>> {
         .filter(|e| paid.get(&hex::encode(e.ballot.body_hash())).copied().unwrap_or(0) >= log.manifest.bond_zat)
         .map(|e| e.i)
         .collect())
+}
+
+fn endorse(j: u32, secret: &Path, committee: &Path, manifest: &Path, out: &Path) -> Result<()> {
+    let ours: Committee = serde_json::from_str(&fs::read_to_string(committee)?)?;
+    let m: Manifest = serde_json::from_str(&fs::read_to_string(manifest)?)?;
+    if m.committee != ours {
+        bail!("the draft names a different committee (key or members); not endorsing");
+    }
+    m.verify_draft().map_err(|e| anyhow!("draft rejected: {e}"))?;
+    let x = read_secret(j, secret, &m.committee.key)?;
+    let e = m.endorse(j, &x, &mut OsRng);
+    write_new(out, serde_json::to_string_pretty(&e)?.as_bytes())?;
+    println!(
+        "member {j} endorsed auction {}: supply {}, {} levels, escrow {}",
+        hex::encode(m.auction_id),
+        m.supply,
+        m.levels(),
+        m.escrow_ua
+    );
+    Ok(())
 }
 
 fn attest(j: u32, secret: &Path, log_url: &str, bonds: &Path, out: &Path) -> Result<()> {
