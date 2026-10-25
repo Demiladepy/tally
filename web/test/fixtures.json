@@ -1,0 +1,78 @@
+{
+  "manifest_v2": {
+    "auction_id": "791bc79ccbf19e10ba7ec92cbc48b79bd60980081a7cdcf41b73a75ffa468bdf",
+    "bond_zat": 100000,
+    "close_height": 200,
+    "collection_id": "0202020202020202020202020202020202020202020202020202020202020202",
+    "committee": {
+      "H": "fff35b6dfe6f741148202e20aede6ae43fa80c71480afac6f1b23d1e6156c887",
+      "X": [
+        "6eefe8f93196f15e43ef157fddcf9d77bd720a98c0d2fa72031cc94a70fdf9b6",
+        "f8215d328d61c8734039ea4e459da66038bbc94b18586e62ce2bd60fa2463124",
+        "caffd1e34b2c15212d18a45bc8f01c277f54d52e6bba5a0090506720fdc73122"
+      ],
+      "members": [
+        "a",
+        "b",
+        "c"
+      ],
+      "n": 3,
+      "t": 2
+    },
+    "endorsements": [
+      {
+        "j": 1,
+        "sig": {
+          "R": "f74e0bbb7fdc3d06f264b91007adf1333c4d3569916f8889627945156866ca21",
+          "s": "00953834790502adb8d581bbb3e9935cd0883f6703c7a765cf940579873a820a"
+        }
+      },
+      {
+        "j": 2,
+        "sig": {
+          "R": "5ba185479f975b18f04e0f0b88d77630e2e4a7625919241d5fe59bea093a5f3a",
+          "s": "e2dd26c692dbdd24fb1db622f71f0b94a37fd36c7a366ae47a34bb3c405e0739"
+        }
+      },
+      {
+        "j": 3,
+        "sig": {
+          "R": "2c4468363cb4ce2e200b626bdb10f7ca04081b2edf35c437f29c13ec0535642c",
+          "s": "5aa79a3bedd3b8f3a97d1069128f121f1135ac41eca2d65728772260e7c18027"
+        }
+      }
+    ],
+    "escrow_ua": "utest1hyrg6enrj07vzm93hj8r469gfgp29rvkwqpsk3q5x6e4s60ur266sdwtaweyqqzs8dt79lsewekfecgzpe59zr2p97e3nqllkq9syluc",
+    "forfeit_ua": "utest1523kueaeafz828u99ufhjg9jszcnstze8mp7m55jmrst4l8p3xasaysnepgpas2gw738zllugq4gp46recw5emw2vtdh0qh0jyqw7fpa",
+    "ladder_zat": [
+      100000,
+      200000,
+      300000,
+      400000,
+      500000,
+      600000,
+      700000,
+      800000,
+      900000,
+      1000000,
+      1100000,
+      1200000,
+      1300000,
+      1400000,
+      1500000,
+      1600000
+    ],
+    "min_batch": 5,
+    "open_height": 100,
+    "seller_pk": "838b641ac5bac3e4c3c29d78da44dacd99e281c8e9825fa664f44e7afe4699bf",
+    "settle_window_blocks": 100,
+    "sig": {
+      "R": "055e104502307e5aa9cc5e0055d3104f4a22c6deb1d88e8e94245c9743a8621a",
+      "s": "66229255481afc51dabfe333351c94e29ce939f14106a70fbd2d2cf70fc62d3a"
+    },
+    "supply": 2,
+    "v": 2
+  },
+  "orchard_only_ua": "utest1hap277en6ayclu5027232d44kv0s6nd0tacmnj07v0avarpuv4vzyfjreu3qexw05v9jvpx8ce37lpt5j4qexyrwhrlrma9msypee8x4",
+  "with_transparent_ua": "utest1gw42askwelu40c90sqql408k9yutg3mg0xgp8ld6vl8pdl0uffp50p40eqrz5738kf0wvytv4m7j95g3pgnz5xfcpkvak33fvegxjvkj5cjek64ndmy828hnnu75sw0u7zr7sm24dz7"
+}

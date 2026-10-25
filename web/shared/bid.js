@@ -42,6 +42,14 @@ async function loadCase() {
     return;
   }
   const log = await r.json();
+  // The link names the auction id, and in v2 the id is the hash of the
+  // manifest's contents (WASM re-checks that, and every endorsement, before
+  // sealing). A bulletin serving some other manifest is refused here.
+  if (log.manifest?.auction_id !== auctionId || log.manifest.v < 2) {
+    $("headline").textContent = "This case file doesn't match its link. Don't bid.";
+    $("seal-btn").disabled = true;
+    return;
+  }
   manifest = log.manifest;
   bulletinPk = log.bulletin_pk;
   $("verify-link").href = `verify.html?auction=${auctionId}`;
@@ -50,7 +58,8 @@ async function loadCase() {
   const L = manifest.ladder_zat;
   $("case-facts").textContent =
     `${manifest.supply} item${manifest.supply === 1 ? "" : "s"} · ${L.length} price levels from ${zec(L[0])} to ${zec(L[L.length - 1])} ZEC · ` +
-    `bond ${zec(manifest.bond_zat)} ZEC · closes at block ${manifest.close_height} · ${log.entries.length} sealed so far`;
+    `bond ${zec(manifest.bond_zat)} ZEC · closes at block ${manifest.close_height} · ${log.entries.length} sealed so far · ` +
+    `committee ${manifest.committee.members.join(", ")} (each signed this case file)`;
   if (log.close) {
     $("headline").textContent = "This vault is already shut.";
     $("seal-btn").disabled = true;
@@ -120,8 +129,13 @@ $("seal-btn").addEventListener("click", async () => {
     btn.disabled = false;
     return;
   }
-  // The bid has done its job. Drop every trace of it from the page.
+  // The bid has done its job. Drop every trace of it from the page: the
+  // readout, the accessible value, the knob angle and the lit notches.
   maxZat = null;
+  $("amt").textContent = "—";
+  $("range").removeAttribute("aria-valuetext");
+  $("knob").style.transform = "";
+  $("ticks").replaceChildren();
   $("range").value = 1;
   $("range").disabled = true;
   $("dial").hidden = true;
@@ -239,7 +253,9 @@ $("key-btn").addEventListener("click", () => {
   const url = URL.createObjectURL(new Blob([JSON.stringify(key, null, 2)], { type: "application/json" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = `tally-bid-${auctionId.slice(0, 8)}-${sealed.receipt.i}.json`;
+  // A generic name: the file list on a seized or synced machine shouldn't
+  // say which auction or ballot number this was.
+  a.download = "tally-key.json";
   a.click();
   URL.revokeObjectURL(url);
   keySaved = true;

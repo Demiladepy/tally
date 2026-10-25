@@ -2,12 +2,16 @@
 # browser (WebAssembly), so it needs no server: open
 #   https://<user>.github.io/tally/verify.html?sample=testnet-2026-10-22
 # Bidding needs a live bulletin and is not available on the static site.
+#
+# The WASM verifier is rebuilt from source here, never taken from the repo,
+# and its sha256 is published next to it (tally_wasm.wasm.sha256) and in the
+# job log, so anyone can rebuild at this commit and compare.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ["web/**", ".github/workflows/pages.yml"]
+    paths: ["web/**", "crates/tally-crypto/**", "crates/tally-zcash/**", "crates/tally-wasm/**", "Cargo.lock", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +31,19 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build the verifier from source
+        run: |
+          cargo build --locked --release --target wasm32-unknown-unknown -p tally-wasm
+          cp target/wasm32-unknown-unknown/release/tally_wasm.wasm web/tally_wasm.wasm
+          (cd web && sha256sum tally_wasm.wasm | tee tally_wasm.wasm.sha256)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verifier passes on the real testnet log and catches tampering
+        run: node web/test/wasm.test.mjs web/tally_wasm.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

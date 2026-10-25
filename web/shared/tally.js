@@ -16,9 +16,11 @@ function call(fn, input) {
   const data = new TextEncoder().encode(JSON.stringify(input));
   const ptr = wasm.tally_alloc(data.length);
   new Uint8Array(wasm.memory.buffer, ptr, data.length).set(data);
+  data.fill(0); // the copy WASM got is wiped there after use
   wasm[fn](ptr, data.length); // takes ownership of the input buffer
   const out = new Uint8Array(wasm.memory.buffer, wasm.tally_out_ptr(), wasm.tally_out_len());
   const reply = JSON.parse(new TextDecoder().decode(out));
+  wasm.tally_clear_out(); // the reply can hold a ballot key
   if ("err" in reply) throw new Error(reply.err);
   return reply.ok;
 }

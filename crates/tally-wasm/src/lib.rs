@@ -50,13 +50,34 @@ pub extern "C" fn tally_out_len() -> usize {
     OUT.with(|o| o.borrow().len())
 }
 
+/// Overwrite and drop the last reply (it can hold a ballot key). JS calls
+/// this as soon as it has decoded the reply.
+#[no_mangle]
+pub extern "C" fn tally_clear_out() {
+    OUT.with(|o| {
+        let mut o = o.borrow_mut();
+        wipe(&mut o);
+        *o = Vec::new();
+    });
+}
+
+/// Zero a buffer in a way the optimiser can't drop.
+fn wipe(buf: &mut [u8]) {
+    for b in buf.iter_mut() {
+        unsafe { std::ptr::write_volatile(b, 0) };
+    }
+}
+
 /// Read the input, run `f`, store the JSON reply. Takes ownership of the input.
 unsafe fn call(ptr: *mut u8, len: usize, f: impl FnOnce(&str) -> Result<Value, String>) {
-    let input = Vec::from_raw_parts(ptr, len, len);
+    let mut input = Vec::from_raw_parts(ptr, len, len);
     let reply = match std::str::from_utf8(&input).map_err(|e| e.to_string()).and_then(f) {
         Ok(v) => json!({ "ok": v }),
         Err(e) => json!({ "err": e }),
     };
+    // The input can hold the bid (seal_ballot); don't leave it in linear memory.
+    wipe(&mut input);
+    tally_clear_out();
     OUT.with(|o| *o.borrow_mut() = reply.to_string().into_bytes());
 }
 
@@ -115,7 +136,8 @@ struct SealOut {
 pub fn seal_ballot(input: &str) -> Result<Value, String> {
     let i: SealIn = serde_json::from_str(input).map_err(|e| e.to_string())?;
     let m = &i.manifest;
-    m.verify().map_err(|e| format!("manifest rejected: {e}"))?;
+    // Only v2: the id is the content hash and every member endorsed it.
+    m.verify_current().map_err(|e| format!("manifest rejected: {e}"))?;
     let yes = m.ladder_zat.iter().filter(|p| **p <= i.max_price_zat).count();
     if yes == 0 {
         return Err("bid is below the lowest price level".into());
@@ -144,9 +166,7 @@ struct MemoIn {
 /// The bond memo: plain text (`TLYB1 ...`) and its 512-byte padded hex.
 pub fn bond_memo(input: &str) -> Result<Value, String> {
     let i: MemoIn = serde_json::from_str(input).map_err(|e| e.to_string())?;
-    if !i.refund_ua.starts_with("u1") && !i.refund_ua.starts_with("utest1") {
-        return Err("refund address must be a unified address".into());
-    }
+    tally_zcash::memo::require_orchard_only_ua(&i.refund_ua).map_err(|e| e.to_string())?;
     let bond = Bond {
         auction_id: codec::bytes32_from_hex(&i.auction_id).map_err(|e| e.to_string())?,
         ballot_hash: codec::bytes32_from_hex(&i.ballot_hash).map_err(|e| e.to_string())?,

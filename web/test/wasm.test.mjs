@@ -7,6 +7,8 @@ import { load, zip321 } from "../shared/tally.js";
 const wasmPath = process.argv[2] ?? "web/tally_wasm.wasm";
 const t = await load(await readFile(wasmPath));
 const log = JSON.parse(await readFile(new URL("../../evidence/testnet-2026-10-22-auction/auction-log.json", import.meta.url)));
+// Public test data from `cargo run -p tally-wasm --example web_test_fixtures`.
+const fx = JSON.parse(await readFile(new URL("./fixtures.json", import.meta.url)));
 
 // 1. The testnet auction goes all green in WASM.
 const r = t.verifyLog(log);
@@ -35,14 +37,28 @@ red((l) => (l.manifest.supply = 3), "change supply");
 red((l) => (l.settlements[0].txid = "00".repeat(32)), "forge a settlement");
 
 // 3. Sealing a ballot in WASM produces something the verifier side accepts,
-//    and the output never contains the bid.
-const m = log.manifest;
+//    and the output never contains the bid. The testnet log is legacy v1:
+//    it still verifies, but takes no new ballots.
+assert.throws(() => t.sealBallot(log.manifest, 700000), /legacy v1/);
+const m = fx.manifest_v2;
+const unendorsed = structuredClone(m);
+unendorsed.endorsements.pop();
+assert.throws(() => t.sealBallot(unendorsed, 700000), /endorsed/);
+const swapped = structuredClone(m);
+swapped.escrow_ua = fx.orchard_only_ua;
+assert.throws(() => t.sealBallot(swapped, 700000), /manifest rejected/);
 const sealed = t.sealBallot(m, 700000);
 assert.equal(sealed.levels_sealed, 16);
 assert.ok(!JSON.stringify(sealed).includes("700000"), "bid leaked into output");
 assert.equal(sealed.ballot.c.length, 16);
 assert.throws(() => t.sealBallot(m, 50000), /below the lowest/);
-const memo = t.bondMemo(m.auction_id, sealed.ballot_hash, "utest1" + "q".repeat(100));
+// A real Orchard-only testnet UA, and one that also carries a transparent
+// receiver, which must be refused.
+const ORCHARD_ONLY = fx.orchard_only_ua;
+const WITH_T = fx.with_transparent_ua;
+assert.throws(() => t.bondMemo(m.auction_id, sealed.ballot_hash, WITH_T), /only an Orchard receiver/);
+assert.throws(() => t.bondMemo(m.auction_id, sealed.ballot_hash, "utest1" + "q".repeat(100)), /only an Orchard receiver/);
+const memo = t.bondMemo(m.auction_id, sealed.ballot_hash, ORCHARD_ONLY);
 assert.equal(memo.hex.length, 1024);
 assert.ok(memo.text.startsWith(`TLYB1 ${m.auction_id} ${sealed.ballot_hash} utest1`), "plain-text bond memo");
 assert.ok(/^[\x20-\x7e]+$/.test(memo.text), "printable ASCII only");
