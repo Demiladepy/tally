@@ -2,7 +2,8 @@
 //!
 //! Privacy rules (THREAT_MODEL.md):
 //! * No request logging of any kind: no IPs, user agents or timings. There
-//!   is no tracing layer, and errors never echo request contents.
+//!   is no tracing layer, and rejections are fixed strings: bodies are parsed
+//!   by `Body`, which never returns serde's message (it quotes the input).
 //! * Only what is already public is stored: the signed manifest, ballots
 //!   (ciphertexts and proofs, no addresses), the close record, and committee
 //!   decryption records.
@@ -26,11 +27,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::body::Bytes;
+use axum::extract::{DefaultBodyLimit, FromRequest, Path, Request, State};
 use axum::http::{header, HeaderValue};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tally_crypto::auction::{AuctionLog, AuctionResult, BondAttestation, Entry, Settlement};
 use tally_crypto::ballot::Ballot;
@@ -80,6 +83,20 @@ type ApiResult<T> = Result<Json<T>, (StatusCode, &'static str)>;
 
 fn bad(msg: &'static str) -> (StatusCode, &'static str) {
     (StatusCode::BAD_REQUEST, msg)
+}
+
+/// A JSON request body whose rejection never echoes the input. axum's `Json`
+/// returns serde's message, which quotes the offending value (an address, a
+/// hex string, part of a bid file); this returns a fixed string instead.
+struct Body<T>(T);
+
+impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for Body<T> {
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let bytes = Bytes::from_request(req, state).await.map_err(|e| (e.status(), "request body rejected"))?;
+        serde_json::from_slice(&bytes).map(Body).map_err(|_| bad("malformed request"))
+    }
 }
 
 fn not_found() -> (StatusCode, &'static str) {
@@ -173,8 +190,9 @@ async fn info(State(b): State<Shared>) -> Json<Info> {
     Json(Info { bulletin_pk: b.pk })
 }
 
-async fn create(State(b): State<Shared>, Json(m): Json<Manifest>) -> ApiResult<AuctionLog> {
-    m.verify().map_err(|_| bad("manifest rejected"))?;
+async fn create(State(b): State<Shared>, Body(m): Body<Manifest>) -> ApiResult<AuctionLog> {
+    // New auctions must be v2: id bound to the contents, all members endorsed.
+    m.verify_current().map_err(|_| bad("manifest rejected"))?;
     let mut all = b.auctions.lock().await;
     if !all.contains_key(&m.auction_id) && all.len() >= b.limits.max_auctions {
         return Err((StatusCode::INSUFFICIENT_STORAGE, "auction limit reached"));
@@ -231,7 +249,7 @@ async fn get_log(State(b): State<Shared>, Path(id): Path<String>) -> ApiResult<A
     all.get(&id).map(|a| Json(a.log.clone())).ok_or_else(not_found)
 }
 
-async fn append(State(b): State<Shared>, Path(id): Path<String>, Json(ballot): Json<Ballot>) -> ApiResult<Receipt> {
+async fn append(State(b): State<Shared>, Path(id): Path<String>, Body(ballot): Body<Ballot>) -> ApiResult<Receipt> {
     let id = auction_id(&id)?;
     let mut all = b.auctions.lock().await;
     let a = all.get_mut(&id).ok_or_else(not_found)?;
@@ -262,7 +280,7 @@ async fn append(State(b): State<Shared>, Path(id): Path<String>, Json(ballot): J
     Ok(Json(Receipt::issue(&b.sk, id, i, entry_hash, &mut rand_core::OsRng)))
 }
 
-async fn close(State(b): State<Shared>, Path(id): Path<String>, Json(c): Json<Close>) -> ApiResult<AuctionLog> {
+async fn close(State(b): State<Shared>, Path(id): Path<String>, Body(c): Body<Close>) -> ApiResult<AuctionLog> {
     let id = auction_id(&id)?;
     let mut all = b.auctions.lock().await;
     let a = all.get_mut(&id).ok_or_else(not_found)?;
@@ -301,7 +319,7 @@ async fn mutate<T>(
     Ok(Json(out))
 }
 
-async fn add_bonds(State(b): State<Shared>, Path(id): Path<String>, Json(att): Json<BondAttestation>) -> ApiResult<usize> {
+async fn add_bonds(State(b): State<Shared>, Path(id): Path<String>, Body(att): Body<BondAttestation>) -> ApiResult<usize> {
     mutate(&b, &id, |log| {
         if log.close.is_none() {
             return Err((StatusCode::CONFLICT, "auction still open"));
@@ -323,7 +341,7 @@ async fn add_bonds(State(b): State<Shared>, Path(id): Path<String>, Json(att): J
 async fn add_decryption(
     State(b): State<Shared>,
     Path(id): Path<String>,
-    Json(rec): Json<DecryptionRecord>,
+    Body(rec): Body<DecryptionRecord>,
 ) -> ApiResult<usize> {
     mutate(&b, &id, |log| {
         if log.bonds.is_none() {
@@ -343,7 +361,7 @@ async fn add_decryption(
     .await
 }
 
-async fn add_result(State(b): State<Shared>, Path(id): Path<String>, Json(r): Json<AuctionResult>) -> ApiResult<usize> {
+async fn add_result(State(b): State<Shared>, Path(id): Path<String>, Body(r): Body<AuctionResult>) -> ApiResult<usize> {
     mutate(&b, &id, |log| {
         if log.result.is_some() {
             return Err((StatusCode::CONFLICT, "result already published"));
@@ -358,7 +376,7 @@ async fn add_result(State(b): State<Shared>, Path(id): Path<String>, Json(r): Js
     .await
 }
 
-async fn add_settlement(State(b): State<Shared>, Path(id): Path<String>, Json(s): Json<Settlement>) -> ApiResult<usize> {
+async fn add_settlement(State(b): State<Shared>, Path(id): Path<String>, Body(s): Body<Settlement>) -> ApiResult<usize> {
     mutate(&b, &id, |log| {
         let Some(r) = &log.result else { return Err((StatusCode::CONFLICT, "no result yet")) };
         if !r.winners.contains(&s.p) || !s.verify(&log.manifest.auction_id, &log.manifest.seller_pk) {

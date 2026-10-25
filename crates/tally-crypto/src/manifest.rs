@@ -13,6 +13,16 @@ use crate::schnorr::{self, Signature};
 use crate::{codec, Error, Point, Scalar};
 
 pub const MANIFEST_PURPOSE: &str = "manifest-sig";
+pub const ENDORSE_PURPOSE: &str = "manifest-endorse";
+
+/// v1: the first testnet auction. Kept verifiable, never accepted for new
+/// auctions. v2: the auction id IS the hash of the manifest's contents, every
+/// committee member endorses it with its key share, and `min_batch` has a floor.
+pub const MANIFEST_V1: u8 = 1;
+pub const MANIFEST_V2: u8 = 2;
+/// Smallest allowed batch in v2. Below this, a handful of opened totals and
+/// cells says too much about individual ballots.
+pub const MIN_BATCH_FLOOR: u64 = 5;
 pub const RECEIPT_PURPOSE: &str = "receipt-sig";
 pub const CLOSE_PURPOSE: &str = "close-sig";
 
@@ -45,9 +55,49 @@ pub struct Manifest {
     #[serde(with = "codec::point")]
     pub seller_pk: Point,
     pub sig: Signature,
+    /// v2: one signature per committee member, by its key share x_j over
+    /// `body_hash`, so a seller can't name a committee that never agreed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub endorsements: Vec<Endorsement>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Endorsement {
+    pub j: u32,
+    pub sig: Signature,
 }
 
 impl Manifest {
+    /// Hash of everything except the id and the signatures. In v2 the auction
+    /// id is this hash, so a link that names the id pins the committee key,
+    /// escrow, ladder and members: nobody can serve a different manifest
+    /// under the same id.
+    pub fn content_hash(&self) -> [u8; 32] {
+        let mut m = self.clone();
+        m.auction_id = [0; 32];
+        let mut t = Transcript::new("manifest-content");
+        t.append("body", &m.body_hash());
+        t.digest32()
+    }
+
+    /// Set the auction id to the content hash (v2). Do this before signing.
+    pub fn bind_id(&mut self) {
+        self.auction_id = self.content_hash();
+    }
+
+    /// Member j's endorsement with its DKG key share.
+    pub fn endorse<R: RngCore + CryptoRng>(&self, j: u32, x_j: &Scalar, rng: &mut R) -> Endorsement {
+        Endorsement { j, sig: schnorr::sign(ENDORSE_PURPOSE, x_j, &self.body_hash(), rng) }
+    }
+
+    fn endorsed_by_all(&self) -> bool {
+        let k = &self.committee.key;
+        let msg = self.body_hash();
+        (1..=k.n).all(|j| {
+            let x = &k.x[j as usize - 1];
+            self.endorsements.iter().any(|e| e.j == j && schnorr::verify(ENDORSE_PURPOSE, x, &msg, &e.sig))
+        })
+    }
     pub fn levels(&self) -> usize {
         self.ladder_zat.len()
     }
@@ -88,7 +138,20 @@ impl Manifest {
 
     /// Structural and signature checks anyone can run.
     pub fn verify(&self) -> Result<(), Error> {
-        if self.v != 1 {
+        self.check(true)
+    }
+
+    /// What a committee member checks before endorsing a v2 draft: everything
+    /// except the endorsements themselves.
+    pub fn verify_draft(&self) -> Result<(), Error> {
+        if self.v < MANIFEST_V2 {
+            return Err(Error::InvalidParams("legacy v1 manifest: not accepted for new auctions"));
+        }
+        self.check(false)
+    }
+
+    fn check(&self, endorsements: bool) -> Result<(), Error> {
+        if self.v != MANIFEST_V1 && self.v != MANIFEST_V2 {
             return Err(Error::InvalidParams("manifest version"));
         }
         let l = &self.ladder_zat;
@@ -108,7 +171,26 @@ impl Manifest {
         if !schnorr::verify(MANIFEST_PURPOSE, &self.seller_pk, &self.body_hash(), &self.sig) {
             return Err(Error::InvalidParams("manifest signature"));
         }
+        if self.v >= MANIFEST_V2 {
+            if self.auction_id != self.content_hash() {
+                return Err(Error::InvalidParams("auction id is not the manifest's content hash"));
+            }
+            if self.min_batch < MIN_BATCH_FLOOR {
+                return Err(Error::InvalidParams("min_batch below the protocol floor"));
+            }
+            if endorsements && !self.endorsed_by_all() {
+                return Err(Error::InvalidParams("not endorsed by every committee member"));
+            }
+        }
         Ok(())
+    }
+
+    /// Only v2 manifests may open new auctions or receive new ballots.
+    pub fn verify_current(&self) -> Result<(), Error> {
+        if self.v < MANIFEST_V2 {
+            return Err(Error::InvalidParams("legacy v1 manifest: not accepted for new auctions"));
+        }
+        self.verify()
     }
 }
 
@@ -189,9 +271,15 @@ mod tests {
     pub fn sample(rng: &mut ChaCha20Rng) -> (Manifest, Scalar) {
         let dealings: Vec<_> = (1..=3).map(|i| dkg::deal(i, 3, 2, rng).unwrap()).collect();
         let key = dkg::committee_key(3, 2, &dealings.iter().map(|d| d.commitments.clone()).collect::<Vec<_>>()).unwrap();
+        let xs: Vec<Scalar> = (1..=3u32)
+            .map(|j| {
+                let rec: Vec<_> = dealings.iter().map(|d| (d.dealer, d.commitments.as_slice(), d.shares[j as usize - 1])).collect();
+                dkg::member_secret(j, &rec).unwrap()
+            })
+            .collect();
         let sk = random_scalar(rng);
         let mut m = Manifest {
-            v: 1,
+            v: MANIFEST_V2,
             auction_id: [1; 32],
             collection_id: [2; 32],
             supply: 8,
@@ -206,15 +294,18 @@ mod tests {
             forfeit_ua: "utest1forfeit".into(),
             seller_pk: g() * sk,
             sig: Signature { r: g(), s: Scalar::from(0u64) },
+            endorsements: vec![],
         };
+        m.bind_id();
         m.sign(&sk, rng);
+        m.endorsements = (1..=3u32).map(|j| m.endorse(j, &xs[j as usize - 1], rng)).collect();
         (m, sk)
     }
 
     #[test]
     fn manifest_sign_verify_and_tamper() {
         let mut rng = ChaCha20Rng::seed_from_u64(5);
-        let (m, _) = sample(&mut rng);
+        let (m, sk) = sample(&mut rng);
         assert_eq!(m.verify(), Ok(()));
         let json = serde_json::to_string(&m).unwrap();
         let back: Manifest = serde_json::from_str(&json).unwrap();
@@ -225,6 +316,45 @@ mod tests {
         let mut t = m.clone();
         t.forfeit_ua = t.escrow_ua.clone();
         assert!(t.verify().is_err());
+
+        // v2: swapping the committee key under the same id is caught even if
+        // the attacker re-signs as "seller" with its own key.
+        let mut rogue = m.clone();
+        let mut r2 = ChaCha20Rng::seed_from_u64(99);
+        rogue.committee.key.h = g() * random_scalar(&mut r2);
+        let rogue_sk = random_scalar(&mut r2);
+        rogue.seller_pk = g() * rogue_sk;
+        rogue.sign(&rogue_sk, &mut r2);
+        assert_eq!(rogue.verify(), Err(Error::InvalidParams("auction id is not the manifest's content hash")));
+        // ...and re-binding the id gives a different id than the link names,
+        // and still lacks the members' endorsements.
+        rogue.bind_id();
+        rogue.sign(&rogue_sk, &mut r2);
+        assert_ne!(rogue.auction_id, m.auction_id);
+        assert_eq!(rogue.verify(), Err(Error::InvalidParams("not endorsed by every committee member")));
+
+        // Missing one member's endorsement fails.
+        let mut two = m.clone();
+        two.endorsements.pop();
+        assert!(two.verify().is_err());
+        // min_batch floor.
+        let mut tiny = m.clone();
+        tiny.min_batch = 2;
+        assert!(tiny.verify().is_err());
+        // Legacy v1 still verifies but is not "current".
+        let mut legacy = m.clone();
+        legacy.v = MANIFEST_V1;
+        legacy.endorsements.clear();
+        legacy.sign(&sk, &mut r2);
+        assert_eq!(legacy.verify(), Ok(()));
+        assert!(legacy.verify_current().is_err());
+        assert_eq!(m.verify_current(), Ok(()));
+        // A draft without endorsements passes the draft check only.
+        let mut draft = m.clone();
+        draft.endorsements.clear();
+        assert_eq!(draft.verify_draft(), Ok(()));
+        assert!(draft.verify().is_err());
+        assert!(legacy.verify_draft().is_err());
     }
 
     #[test]

@@ -238,7 +238,9 @@ impl AuctionLog {
     /// a total is still missing; the missing level is returned in `.1`.
     fn replay_search(&self) -> Result<(Option<Search>, Option<usize>), Error> {
         let missing = Cell::new(None);
-        let r = clearing::binary_search(self.manifest.levels(), self.manifest.supply, |k| {
+        // v2: T_1 is the public bonded count, never decrypted.
+        let public_t1 = (self.manifest.v >= crate::manifest::MANIFEST_V2).then(|| self.bonded().len() as u64);
+        let r = clearing::binary_search(self.manifest.levels(), self.manifest.supply, public_t1, |k| {
             match self.record(&total_target(k)) {
                 Some(rec) => Ok(rec.m),
                 None => {
@@ -345,7 +347,15 @@ pub fn verify(log: &AuctionLog) -> Vec<Check> {
     let mut out = vec![];
     let m = &log.manifest;
 
-    check(&mut out, "Manifest signed by the seller", m.verify().is_ok(), "seller signature, ladder, committee shape");
+    let manifest_detail = if m.v >= crate::manifest::MANIFEST_V2 {
+        format!(
+            "v2: auction id is the manifest hash; seller signature; endorsed by all {} committee members; min batch {}",
+            m.committee.key.n, m.min_batch
+        )
+    } else {
+        "legacy v1: seller signature only (auction id not bound to the manifest, no member endorsements)".to_string()
+    };
+    check(&mut out, "Manifest signed by the seller", m.verify().is_ok(), manifest_detail);
 
     let mut prev = log::genesis(&m.auction_id);
     let mut chain_ok = true;

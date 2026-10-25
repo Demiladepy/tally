@@ -89,7 +89,7 @@ fn run_auction(seed: u64, bidders: usize, supply: u64, max_of: impl Fn(&mut ChaC
     // Tally and search, using members 1 and 3 only.
     let totals = clearing::tally(&ballots, L);
     let mut records = Vec::new();
-    let search = clearing::binary_search(L, supply, |k| {
+    let search = clearing::binary_search(L, supply, None, |k| {
         let rec = committee.decrypt(&format!("T_{k}"), &totals[k - 1], &[1, 3], bidders as u64, &mut rng)?;
         let m = rec.m;
         records.push(rec);

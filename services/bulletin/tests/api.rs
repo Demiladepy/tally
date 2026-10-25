@@ -12,7 +12,7 @@ use serde_json::Value;
 use tally_bulletin::{Bulletin, Limits};
 use tally_crypto::auction::{self, AuctionLog, AuctionResult, BondAttestation, Outcome, Settlement};
 use tally_crypto::ballot::Ballot;
-use tally_crypto::manifest::{Close, Committee, Manifest, Receipt};
+use tally_crypto::manifest::{Close, Committee, Manifest, Receipt, MANIFEST_V2};
 use tally_crypto::schnorr::Signature;
 use tally_crypto::threshold;
 use tally_crypto::{dkg, g, random_scalar, Point, Scalar};
@@ -33,7 +33,7 @@ fn fixture(seed: u64, supply: u64, min_batch: u64) -> (Fixture, Bulletin) {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let dealings: Vec<_> = (1..=3).map(|i| dkg::deal(i, 3, 2, &mut rng).unwrap()).collect();
     let key = dkg::committee_key(3, 2, &dealings.iter().map(|d| d.commitments.clone()).collect::<Vec<_>>()).unwrap();
-    let member_sks = (1..=3u32)
+    let member_sks: Vec<Scalar> = (1..=3u32)
         .map(|j| {
             let rec: Vec<_> = dealings.iter().map(|d| (d.dealer, d.commitments.as_slice(), d.shares[j as usize - 1])).collect();
             dkg::member_secret(j, &rec).unwrap()
@@ -41,8 +41,8 @@ fn fixture(seed: u64, supply: u64, min_batch: u64) -> (Fixture, Bulletin) {
         .collect();
     let seller_sk = random_scalar(&mut rng);
     let mut manifest = Manifest {
-        v: 1,
-        auction_id: [seed as u8; 32],
+        v: MANIFEST_V2,
+        auction_id: [0; 32],
         collection_id: [2; 32],
         supply,
         ladder_zat: (1..=L as u64).map(|i| i * 100_000).collect(),
@@ -56,12 +56,21 @@ fn fixture(seed: u64, supply: u64, min_batch: u64) -> (Fixture, Bulletin) {
         forfeit_ua: "utest1forfeit".into(),
         seller_pk: g() * seller_sk,
         sig: Signature { r: g(), s: Scalar::from(0u64) },
+        endorsements: vec![],
     };
-    manifest.sign(&seller_sk, &mut rng);
+    reseal(&mut manifest, &seller_sk, &member_sks, &mut rng);
     let bsk = random_scalar(&mut rng);
     let id = hex::encode(manifest.auction_id);
     let f = Fixture { rng, manifest, seller_sk, member_sks, bulletin_pk: g() * bsk, id };
     (f, Bulletin::new(bsk, None).unwrap())
+}
+
+/// Bind the id to the contents, sign as seller, endorse as every member.
+fn reseal(m: &mut Manifest, seller_sk: &Scalar, member_sks: &[Scalar], rng: &mut ChaCha20Rng) {
+    m.endorsements.clear();
+    m.bind_id();
+    m.sign(seller_sk, rng);
+    m.endorsements = (1..=member_sks.len() as u32).map(|j| m.endorse(j, &member_sks[j as usize - 1], rng)).collect();
 }
 
 async fn call(app: &Router, method: &str, uri: &str, body: Option<String>) -> (StatusCode, Value) {
@@ -124,14 +133,25 @@ async fn clear(f: &mut Fixture, app: &Router) -> AuctionLog {
 
 #[tokio::test]
 async fn whole_auction_and_rejections() {
-    let (mut f, b) = fixture(1, 2, 3);
+    let (mut f, b) = fixture(1, 2, 5);
     let app = b.router();
     assert_eq!(post(&app, "/v1/auctions", &f.manifest).await, StatusCode::OK);
     assert_eq!(post(&app, "/v1/auctions", &f.manifest).await, StatusCode::OK, "idempotent");
+    // v2: a different manifest can't reuse the id (the id is its hash) ...
     let mut other = f.manifest.clone();
     other.supply = 3;
     other.sign(&f.seller_sk, &mut f.rng);
-    assert_eq!(post(&app, "/v1/auctions", &other).await, StatusCode::CONFLICT);
+    assert_eq!(post(&app, "/v1/auctions", &other).await, StatusCode::BAD_REQUEST);
+    // ... a member that never endorsed is refused ...
+    let mut unendorsed = f.manifest.clone();
+    unendorsed.endorsements.pop();
+    assert_eq!(post(&app, "/v1/auctions", &unendorsed).await, StatusCode::BAD_REQUEST);
+    // ... and legacy v1 can't open new auctions.
+    let mut legacy = f.manifest.clone();
+    legacy.v = 1;
+    legacy.endorsements.clear();
+    legacy.sign(&f.seller_sk, &mut f.rng);
+    assert_eq!(post(&app, "/v1/auctions", &legacy).await, StatusCode::BAD_REQUEST);
 
     // Six bidders; entry 5 never pays a bond and must not count.
     let url = format!("/v1/auctions/{}/ballots", f.id);
@@ -171,7 +191,7 @@ async fn whole_auction_and_rejections() {
     let log = get_log(&app, &f.id).await;
     let mut early = log.clone();
     early.bonds = Some(attest(&mut f, root, &[0, 1, 2, 3, 5], &[1, 3]));
-    let early_rec = decrypt(&mut f, &early, "T_8");
+    let early_rec = decrypt(&mut f, &early, "T_9");
     assert_eq!(post(&app, &dec_url, &early_rec).await, StatusCode::CONFLICT);
 
     // Bond attestation: one signature is not a quorum; a wrong root is refused.
@@ -184,10 +204,11 @@ async fn whole_auction_and_rejections() {
     // A target the binary search doesn't need yet is refused.
     let log = get_log(&app, &f.id).await;
     let want = log.next_targets().unwrap();
-    assert_eq!(want, vec!["T_8".to_string()], "first probe of the search over 16 levels");
+    // T_1 is the public bonded count (5 >= supply), so the search starts at 1.
+    assert_eq!(want, vec!["T_9".to_string()], "first probe of the search over 16 levels");
     let premature = decrypt(&mut f, &log, "T_2");
     assert_eq!(post(&app, &dec_url, &premature).await, StatusCode::CONFLICT);
-    let mut lie = decrypt(&mut f, &log, "T_8");
+    let mut lie = decrypt(&mut f, &log, "T_9");
     lie.m += 1;
     assert_eq!(post(&app, &dec_url, &lie).await, StatusCode::BAD_REQUEST);
 
@@ -246,26 +267,27 @@ async fn whole_auction_and_rejections() {
 
 #[tokio::test]
 async fn undersubscribed_and_void() {
-    // Undersubscribed: 3 bonded ballots, supply 5: everyone wins at p_1, no cells opened.
-    let (mut f, b) = fixture(3, 5, 3);
+    // Undersubscribed: 5 bonded ballots, supply 7: everyone wins at p_1, and
+    // since T_1 is the public bonded count nothing at all is decrypted.
+    let (mut f, b) = fixture(3, 7, 5);
     let app = b.router();
     post(&app, "/v1/auctions", &f.manifest).await;
-    for yes in [2, 7, 16] {
+    for yes in [2, 7, 16, 4, 11] {
         let bl = ballot(&mut f, yes);
         post(&app, &format!("/v1/auctions/{}/ballots", f.id), &bl).await;
     }
     let root = get_log(&app, &f.id).await.head();
-    post(&app, &format!("/v1/auctions/{}/close", f.id), &Close::sign(&f.seller_sk, f.manifest.auction_id, 3, root, &mut f.rng)).await;
-    post(&app, &format!("/v1/auctions/{}/bonds", f.id), &attest(&mut f, root, &[0, 1, 2], &[1, 3])).await;
+    post(&app, &format!("/v1/auctions/{}/close", f.id), &Close::sign(&f.seller_sk, f.manifest.auction_id, 5, root, &mut f.rng)).await;
+    post(&app, &format!("/v1/auctions/{}/bonds", f.id), &attest(&mut f, root, &[0, 1, 2, 3, 4], &[1, 3])).await;
     let log = clear(&mut f, &app).await;
     let r: AuctionResult = log.compute_result([0; 32]).unwrap();
     assert_eq!(r.outcome, Outcome::Undersubscribed);
     assert_eq!(r.price_zat, Some(100_000));
-    assert_eq!(r.winners.len(), 3);
-    assert!(log.decryptions.iter().all(|d| d.target.starts_with("T_")), "no cell decrypted");
+    assert_eq!(r.winners.len(), 5);
+    assert!(log.decryptions.is_empty(), "nothing decrypted: {:?}", log.decryptions.iter().map(|d| &d.target).collect::<Vec<_>>());
 
-    // Void: 2 bonded < min_batch 3, so nothing at all is decrypted.
-    let (mut f, b) = fixture(4, 1, 3);
+    // Void: 2 bonded < min_batch 5, so nothing at all is decrypted.
+    let (mut f, b) = fixture(4, 1, 5);
     let app = b.router();
     post(&app, "/v1/auctions", &f.manifest).await;
     for yes in [4, 9] {
@@ -285,8 +307,33 @@ async fn undersubscribed_and_void() {
 }
 
 #[tokio::test]
+async fn rejections_never_echo_input() {
+    let (f, b) = fixture(6, 1, 5);
+    let app = b.router();
+    post(&app, "/v1/auctions", &f.manifest).await;
+    let marker = "utest1leakcanaryleakcanary";
+    for (uri, body) in [
+        (format!("/v1/auctions/{}/ballots", f.id), format!("{{\"P\":\"{marker}\"}}")),
+        (format!("/v1/auctions/{}/ballots", f.id), format!("[\"{marker}\"")),
+        ("/v1/auctions".to_string(), format!("{{\"v\":2,\"escrow_ua\":{marker}}}")),
+        (format!("/v1/auctions/{}/settlements", f.id), format!("{{\"txid\":\"{marker}\"}}")),
+    ] {
+        let req = Request::builder()
+            .method("POST")
+            .uri(&uri)
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert!(resp.status().is_client_error(), "{uri}");
+        let text = String::from_utf8(resp.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(!text.contains("leakcanary"), "{uri} echoed input: {text}");
+    }
+}
+
+#[tokio::test]
 async fn limits_stop_spam() {
-    let (mut f, b) = fixture(5, 1, 1);
+    let (mut f, b) = fixture(5, 1, 5);
     let app = b.with_limits(Limits { max_auctions: 1, max_ballots_per_auction: 2 }).router();
     assert_eq!(post(&app, "/v1/auctions", &f.manifest).await, StatusCode::OK);
     let url = format!("/v1/auctions/{}/ballots", f.id);
@@ -297,8 +344,10 @@ async fn limits_stop_spam() {
     let bl = ballot(&mut f, 3);
     assert_eq!(post(&app, &url, &bl).await, StatusCode::INSUFFICIENT_STORAGE);
     let mut other = f.manifest.clone();
-    other.auction_id = [77; 32];
-    other.sign(&f.seller_sk, &mut f.rng);
+    other.supply = 2;
+    let members = f.member_sks.clone();
+    reseal(&mut other, &f.seller_sk, &members, &mut f.rng);
+    assert_ne!(other.auction_id, f.manifest.auction_id);
     assert_eq!(post(&app, "/v1/auctions", &other).await, StatusCode::INSUFFICIENT_STORAGE);
 }
 
@@ -306,7 +355,7 @@ async fn limits_stop_spam() {
 async fn persists_and_reloads() {
     let dir = std::env::temp_dir().join(format!("tally-bulletin-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let (mut f, _) = fixture(2, 2, 3);
+    let (mut f, _) = fixture(2, 2, 5);
     let bsk = random_scalar(&mut f.rng);
     let app = Bulletin::new(bsk, Some(dir.clone())).unwrap().router();
     post(&app, "/v1/auctions", &f.manifest).await;
