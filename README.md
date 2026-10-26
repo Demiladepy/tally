@@ -16,7 +16,7 @@ Clearing a sealed-bid auction is a **private vote on prices**. Each bidder says 
 
 ## How it works
 1. **List.** The seller mints items as zero-value Ironwood notes whose memo holds the item (carrier notes), and publishes a signed manifest: supply, a 16-level price ladder, bond size, close height, and a 2-of-3 committee key.
-2. **Bid.** In your browser, you turn a dial to your max. Your tab encrypts a 0/1 for every price level (exponential ElGamal on Pallas) and attaches proofs that each cell is 0 or 1, the cells only step down, and the first cell is 1. Only that ciphertext goes to the bulletin, which returns a signed receipt. A small shielded bond, with a plain-text memo `TLYB1 <auction> <ballot-hash> <one-time refund address>`, keeps bids honest.
+2. **Bid.** On the order ticket, you set a limit price. Your tab encrypts a 0/1 for every price level (exponential ElGamal on Pallas) and attaches proofs that each cell is 0 or 1, the cells only step down, and the first cell is 1. Only that ciphertext goes to the bulletin, which returns a signed receipt. A small shielded bond, with a plain-text memo `TLYB1 <auction> <ballot-hash> <one-time refund address>`, keeps bids honest.
 3. **Close.** The seller signs the hash-chained log at its final root.
 4. **Tally.** Anyone can add the ciphertexts per level. The committee threshold-decrypts **only the totals a binary search needs (4 of 16 in our run)**, each share with a DLEQ proof. The bulletin refuses any decryption the search doesn't need.
 5. **Clear.** The price is the highest level whose yes-count covers supply. Winners are named by anonymous ballot key. On an exact fill only one cell per ballot is opened; on a tie, a seed from the close block's hash decides.

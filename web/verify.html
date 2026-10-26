@@ -5,60 +5,72 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <title>Verify — Tally</title>
+  <title>Clearing report · Tally</title>
+  <link rel="preload" href="fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="shared/style.css">
   <script src="shared/frame.js"></script>
   <script type="module" src="shared/verify.js"></script>
 </head>
 <body>
-  <div class="bar"><div class="wrap">
-    <a class="brand" href="./">T<span>A</span>LLY</a>
+  <header class="top"><div class="wrap">
+    <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
+    <nav aria-label="Main"><a href="./">Offerings</a><a href="orders.html">Orders</a><a href="verify.html" aria-current="page">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
     <span class="net">Zcash testnet · Ironwood</span>
-    <nav><a href="./">Cases</a><a href="verify.html" aria-current="page">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
-  </div></div>
+  </div></header>
+
+  <section class="head"><div class="wrap">
+    <div class="crumbs"><a href="./">Offerings</a> / <span id="case-label">Clearing report</span></div>
+    <div class="head-row" id="verdict" aria-live="polite">
+      <div class="verdict-mark" id="mark">
+        <span class="seal" id="seal" aria-hidden="true">…</span>
+        <div>
+          <h1 id="verdict-text">Loading the verifier…</h1>
+          <p class="sub" id="verdict-sub">Every check runs in your browser, in WebAssembly built from the same Rust the committee uses. The desk's word counts for nothing.</p>
+        </div>
+      </div>
+      <span class="pill" id="outcome" hidden></span>
+    </div>
+    <div class="kpis" id="kpis" hidden>
+      <div><div class="k">Clearing price</div><div class="v" id="price">—</div></div>
+      <div><div class="k">Units</div><div class="v" id="supply">—</div></div>
+      <div><div class="k">Orders · funded</div><div class="v" id="ballots">—</div></div>
+      <div><div class="k">Committee</div><div class="v" id="committee">—</div></div>
+    </div>
+  </div></section>
 
   <main class="wrap">
-    <section class="verdict" id="verdict" aria-live="polite">
-      <span class="label" id="case-label">Verify an auction</span>
-      <div class="big" id="verdict-text">Loading the verifier…</div>
-      <p class="lede" id="verdict-sub">Every check below runs in your browser, in WebAssembly compiled from the same Rust the committee uses. The server's word counts for nothing.</p>
-    </section>
-
-    <section class="section" id="result-sec" hidden aria-labelledby="res-h">
-      <header><h2 id="res-h">The take</h2><span class="label" id="outcome"></span></header>
-      <div class="facts">
-        <div><span class="label">Clearing price</span><div class="price-tag" id="price">—</div></div>
-        <div><span class="label">Items</span><div class="v" id="supply"></div></div>
-        <div><span class="label">Ballots · bonded</span><div class="v" id="ballots"></div></div>
-        <div><span class="label">Committee</span><div class="v" id="committee"></div></div>
-      </div>
-    </section>
-
-    <section class="section" id="ladder-sec" hidden aria-labelledby="lad-h">
-      <header><h2 id="lad-h">What was opened</h2><span class="label" id="opened"></span></header>
-      <div class="ladder" id="ladder" role="img" aria-label="Price ladder"></div>
-      <div class="legend"><span><i class="sealed"></i>Sealed: never decrypted</span><span><i class="open"></i>Total opened by the binary search</span><span><i class="clear"></i>Clearing level</span></div>
-    </section>
-
     <section class="section" aria-labelledby="chk-h">
-      <header><h2 id="chk-h">Checks</h2><span class="label" id="tally"></span></header>
-      <ol class="checks" id="checks"></ol>
+      <div class="sec-head"><h2 id="chk-h">Audit checks</h2><span class="muted" id="tally"></span></div>
+      <div class="card"><ol class="checks" id="checks"><li class="empty">Waiting for a clearing record.</li></ol></div>
     </section>
 
-    <section class="section" id="winners-sec" hidden aria-labelledby="win-h">
-      <header><h2 id="win-h">Winners</h2><span class="label">Anonymous ballot IDs</span></header>
-      <ul class="rows" id="winners"></ul>
-    </section>
+    <div class="two section">
+      <section id="ladder-sec" hidden aria-labelledby="lad-h">
+        <div class="sec-head"><h2 id="lad-h">Price discovery</h2><span class="muted" id="opened"></span></div>
+        <div class="card card-pad">
+          <div class="ladder" id="ladder" role="img" aria-label="Price ladder"></div>
+          <div class="legend"><span><i class="sealed"></i>Sealed, never decrypted</span><span><i class="open"></i>Aggregate opened</span><span><i class="clear"></i>Clearing level</span></div>
+        </div>
+      </section>
+      <section id="winners-sec" hidden aria-labelledby="win-h">
+        <div class="sec-head"><h2 id="win-h">Allocations</h2><span class="muted">Anonymous order IDs</span></div>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Order ID</th><th>Settlement</th></tr></thead>
+          <tbody id="winners"></tbody>
+        </table></div>
+      </section>
+    </div>
 
     <section class="section" aria-labelledby="file-h">
-      <header><h2 id="file-h">Verify a saved log</h2><span class="label">Offline · nothing uploaded</span></header>
+      <div class="sec-head"><h2 id="file-h">Audit a saved record</h2><span class="muted">Offline · nothing is uploaded</span></div>
       <label class="drop" id="drop">
-        <span>Drop an <code>auction-log.json</code> here, or pick one. It's read locally and checked in this tab.</span>
+        <b>Drop an <code>auction-log.json</code></b>
+        <span>It's read locally and checked in this tab. Or open the <a href="verify.html?sample=testnet-2026-10-22">Oct 22 testnet clearing</a>.</span>
         <input type="file" id="file" accept="application/json,.json">
       </label>
-      <p class="dim mono note-top">Or try the <a href="verify.html?sample=testnet-2026-10-22">Oct 22 testnet auction</a>.</p>
     </section>
   </main>
-  <footer class="foot"><div class="wrap">Root, ballots, proofs, shares and settlements are all in the log. Nothing on this page depends on trusting the bulletin.</div></footer>
+
+  <footer class="foot"><div class="wrap"><span>Tally · sealed-bid block auctions on Zcash</span><span>Root, orders, proofs, shares and settlements are all in the record. Nothing here depends on trusting the desk.</span></div></footer>
 </body>
 </html>

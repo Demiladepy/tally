@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Orders · Tally</title>
+  <link rel="preload" href="fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="shared/style.css">
+  <script src="shared/frame.js"></script>
+  <script type="module" src="shared/orders.js"></script>
+</head>
+<body>
+  <header class="top"><div class="wrap">
+    <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
+    <nav aria-label="Main"><a href="./">Offerings</a><a href="orders.html" aria-current="page">Orders</a><a href="verify.html">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
+    <span class="net">Zcash testnet · Ironwood</span>
+  </div></header>
+
+  <section class="head"><div class="wrap">
+    <div class="crumbs"><a href="./">Desk</a> / Orders</div>
+    <div class="head-row">
+      <div>
+        <h1>Your orders</h1>
+        <p class="sub">The desk keeps no accounts, so it can't list your orders. Open your order keys here to track them. Keys are read in this tab and never uploaded.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <main class="wrap">
+    <section class="section">
+      <div class="card table-wrap">
+        <table>
+          <thead><tr><th>Offering</th><th>Order</th><th>Status</th><th class="r col-hide">Clearing price</th><th class="r col-hide">Settlement</th><th></th></tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="empty">No order keys opened yet.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <label class="drop" id="drop">
+        <b>Open order keys</b>
+        <span>Drop one or more <code>tally-key.json</code> files here, or click to choose.</span>
+        <input type="file" id="file" accept="application/json,.json" multiple>
+      </label>
+    </section>
+  </main>
+
+  <footer class="foot"><div class="wrap"><span>Tally · sealed-bid block auctions on Zcash</span><span>Order keys stay in this tab's memory and are gone when you close it.</span></div></footer>
+</body>
+</html>

@@ -26,7 +26,7 @@ Deadline: Oct 28, 23:59 UTC (00:59 Oct 29 Lagos). Target: submit by 18:00 Lagos 
 
 **0:20–0:40: the insight.** "Clearing a sealed-bid auction is a private vote on prices. Each bidder votes yes or no at every price level. We add the votes up encrypted, and open only the few sums a binary search needs. Intent hidden, result public."
 
-**0:40–1:20: the demo (screen: bid page).** Turn the dial to your max. Click *Seal my bid* and the envelope stamps shut. "My number never left this tab. The browser encrypted sixteen yes/no cells with proofs, and the bulletin signed a receipt." Show the bond request: the ZIP 321 link, and the plain-text memo for any wallet.
+**0:40–1:20: the demo (screen: Offerings → offering page).** Open the offering from the Offerings table. Show the term sheet and the Committee tab ("every member co-signed these terms; my browser checks each signature"). On the order ticket, set a limit price, click *Review order*, then *Seal & submit*. "My limit was encrypted in this tab. The desk received ciphertext and signed a receipt, and the limit is already gone from the page." Show the deposit step: paste a fresh shielded refund address and show the payment request.
 
 **1:20–1:55: the reveal (screen: verify page).** "At close, a 2-of-3 committee opened 4 of the 16 totals. Everything else stays sealed: see the hatched levels. The clearing price is 0.012, and both winners settled in one atomic shielded transaction each." Scroll the checks as they tick green. "These ten checks just ran in my browser. Drop in a tampered log and they go red." Show a red run.
 

@@ -5,40 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <title>Tally — sealed bids on Zcash</title>
+  <title>Tally · Sealed-bid block auctions on Zcash</title>
+  <link rel="preload" href="fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="shared/style.css">
   <script src="shared/frame.js"></script>
   <script type="module" src="shared/index.js"></script>
 </head>
 <body>
-  <div class="bar"><div class="wrap">
-    <a class="brand" href="./">T<span>A</span>LLY</a>
+  <header class="top"><div class="wrap">
+    <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
+    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="verify.html">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
     <span class="net">Zcash testnet · Ironwood</span>
-    <nav><a href="./" aria-current="page">Cases</a><a href="verify.html">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
-  </div></div>
+  </div></header>
+
+  <section class="hero">
+    <div class="cipher" id="cipher" aria-hidden="true"></div>
+    <div class="wrap">
+      <span class="eyebrow"><b>LIVE</b>Uniform-price sealed-bid auctions, settled on Zcash</span>
+      <h1>Price discovery without information leakage.</h1>
+      <p class="lede">Run a block sale where no order is ever opened. Bids are sealed in the buyer's browser, cleared by a threshold committee, and settled atomically in shielded ZEC. Every clearing is publicly verifiable.</p>
+      <div class="actions">
+        <a class="btn cta" href="#offerings">View offerings <span class="arrow" aria-hidden="true">↓</span></a>
+        <a class="btn ghost-dark" href="verify.html?sample=testnet-2026-10-22">Audit a clearing report</a>
+      </div>
+      <div class="stats" aria-label="Desk statistics">
+        <div class="stat"><span class="num" id="st-open">—</span><span>Open offerings</span></div>
+        <div class="stat"><span class="num" id="st-orders">—</span><span>Sealed orders on the book</span></div>
+        <div class="stat"><span class="num">0</span><span>Orders ever decrypted</span></div>
+        <div class="stat"><span class="num">10/10</span><span>Public checks per clearing</span></div>
+      </div>
+    </div>
+  </section>
 
   <main class="wrap">
-    <section class="hero">
-      <span class="label">Sealed-bid auction · uniform price</span>
-      <h1>Nobody's bid is ever opened.</h1>
-      <p class="lede">Bidders seal a price ladder in their browser. The committee opens only the handful of totals a binary search needs, and anyone can re-run every check right here on this page.</p>
-    </section>
-
-    <section class="section" aria-labelledby="cases-h">
-      <header><h2 id="cases-h">Open cases</h2><span class="label" id="count"></span></header>
-      <ul class="case-list" id="cases"><li class="case"><span class="dim mono">Contacting the bulletin…</span></li></ul>
+    <section class="section" id="offerings" aria-labelledby="off-h">
+      <div class="sec-head"><h2 id="off-h">Offerings</h2><span class="muted" id="count"></span></div>
+      <div class="card table-wrap">
+        <table>
+          <thead><tr><th>Offering</th><th class="r">Units</th><th class="r col-hide">Price range (ZEC)</th><th class="r col-hide">Deposit</th><th class="r">Orders</th><th>Status</th><th></th></tr></thead>
+          <tbody id="rows"><tr><td colspan="7" class="empty">Connecting to the order book…</td></tr></tbody>
+        </table>
+      </div>
     </section>
 
     <section class="section" aria-labelledby="how-h">
-      <header><h2 id="how-h">The job, in four moves</h2></header>
-      <div class="how">
-        <div><span class="label">01 · Seal</span><p>Turn the dial to your max. Your browser encrypts a yes/no for every price level. The number never leaves this page.</p></div>
-        <div><span class="label">02 · Bond</span><p>A small shielded bond, with a memo that ties it to your sealed ballot and a one-time refund address.</p></div>
-        <div><span class="label">03 · Crack</span><p>At close, a 2-of-3 committee opens only the sums a binary search needs. Never a single bid.</p></div>
-        <div><span class="label">04 · Settle</span><p>Winners swap ZEC for the item in one atomic Ironwood transaction. Bonds come back.</p></div>
+      <div class="sec-head"><h2 id="how-h">How a sealed block auction works</h2><span class="muted">Same steps as any primary allocation. None of the leakage.</span></div>
+      <div class="steps4">
+        <div class="card"><span class="n">01</span><h3>Submit a sealed order</h3><p>Set your limit price on the order ticket. Your browser encrypts it before it leaves the page; the desk receives ciphertext and a signed receipt.</p></div>
+        <div class="card"><span class="n">02</span><h3>Fund the deposit</h3><p>A small refundable deposit in shielded ZEC commits the order. Only depositors count at clearing.</p></div>
+        <div class="card"><span class="n">03</span><h3>Single clearing price</h3><p>At close, a 2-of-3 committee opens only the aggregate totals a binary search needs. Everyone who clears pays the same price.</p></div>
+        <div class="card"><span class="n">04</span><h3>Atomic settlement</h3><p>Each allocation settles delivery-versus-payment in one Ironwood transaction. Deposits are returned.</p></div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="why-h">
+      <div class="sec-head"><h2 id="why-h">Built for desks that can't afford to leak</h2></div>
+      <div class="trust">
+        <div><b>No order is ever revealed</b><p>Not to the seller, the operator or the committee. Only a handful of aggregate totals are opened, never an individual bid.</p></div>
+        <div><b>Verifiable, not trusted</b><p>Every clearing ships a report anyone can re-run in the browser: signatures, proofs, decryptions, price and allocations.</p></div>
+        <div><b>Shielded end to end</b><p>Deposits, payment and delivery move only in Zcash's Ironwood pool. No transparent addresses, no published counterparties.</p></div>
       </div>
     </section>
   </main>
-  <footer class="foot"><div class="wrap">No trackers, no third-party scripts. Whoever serves these files (a Tally bulletin, or GitHub Pages for the static demo) sees your IP like any web host; the Tally bulletin keeps no request logs. Use Tor if that matters to you.</div></footer>
+
+  <footer class="foot"><div class="wrap"><span>Tally · sealed-bid block auctions on Zcash · open source</span><span>No trackers or third-party scripts. Whoever hosts these files sees your IP like any web host; the Tally desk keeps no request logs. Use Tor if that matters.</span></div></footer>
 </body>
 </html>

@@ -1,153 +1,196 @@
 import { load, zec, zip321 } from "./tally.js";
 
 const $ = (id) => document.getElementById(id);
-const short = (h) => `${h.slice(0, 10)}…${h.slice(-6)}`;
-const SVG = "http://www.w3.org/2000/svg";
+const short = (h) => `${h.slice(0, 8)}…${h.slice(-6)}`;
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
 
 const tally = await load(new URL("../tally_wasm.wasm", import.meta.url).href);
 const auctionId = new URLSearchParams(location.search).get("auction") ?? "";
 
 let manifest = null;
 let bulletinPk = null;
-let sealed = null; // { ballot, ballot_sk, P, ballot_hash } — never the bid
+let sealed = null; // { ballot, ballot_sk, P, ballot_hash, receipt } — never the limit
 let keySaved = false;
-
-function step(n) {
-  for (let i = 1; i <= 4; i++) {
-    const s = $(`s${i}`);
-    s.classList.toggle("done", i < n);
-    if (i === n) s.setAttribute("aria-current", "step");
-    else s.removeAttribute("aria-current");
-  }
-}
 
 function status(id, text, kind = "") {
   const s = $(id);
   s.textContent = text;
   s.className = `status ${kind}`;
 }
+function show(panel) {
+  for (const id of ["t-enter", "t-review", "t-track"]) $(id).hidden = id !== panel;
+}
+function setState(text, kind) {
+  $("state").textContent = text;
+  $("state").className = `pill ${kind ?? ""}`;
+}
+function blockTicket(text) {
+  $("review-btn").disabled = true;
+  status("enter-status", text, "err");
+}
 
-// ---- case file ----
-async function loadCase() {
+// ---- tabs ----
+for (const b of document.querySelectorAll("[data-tab]")) {
+  b.addEventListener("click", () => {
+    for (const x of document.querySelectorAll("[data-tab]")) x.setAttribute("aria-selected", String(x === b));
+    for (const p of document.querySelectorAll("[data-panel]")) p.hidden = p.dataset.panel !== b.dataset.tab;
+  });
+}
+
+// ---- offering ----
+function term(dl, k, v, mono = true) {
+  dl.append(el("dt", "", k), el("dd", mono ? "mono" : "", v));
+}
+
+async function loadOffering() {
   if (!/^[0-9a-f]{64}$/.test(auctionId)) {
-    $("case-label").textContent = "No case selected";
-    $("headline").textContent = "Pick an open case first.";
-    $("seal-btn").disabled = true;
-    return;
+    $("title").textContent = "No offering selected";
+    $("subtitle").textContent = "Pick one from the Offerings list.";
+    return blockTicket("Pick an offering first.");
   }
   const r = await fetch(`v1/auctions/${auctionId}`);
   if (!r.ok) {
-    $("headline").textContent = "That case isn't on this bulletin.";
-    $("seal-btn").disabled = true;
-    return;
+    $("title").textContent = "Offering not found on this desk";
+    return blockTicket("This desk doesn't list that offering.");
   }
   const log = await r.json();
   // The link names the auction id, and in v2 the id is the hash of the
   // manifest's contents (WASM re-checks that, and every endorsement, before
-  // sealing). A bulletin serving some other manifest is refused here.
+  // sealing). A desk serving some other manifest is refused here.
   if (log.manifest?.auction_id !== auctionId || log.manifest.v < 2) {
-    $("headline").textContent = "This case file doesn't match its link. Don't bid.";
-    $("seal-btn").disabled = true;
-    return;
+    $("title").textContent = "This offering doesn't match its link";
+    setState("Do not trade", "bad");
+    return blockTicket("The terms served don't hash to this offering's ID. Don't place an order.");
   }
   manifest = log.manifest;
   bulletinPk = log.bulletin_pk;
-  $("verify-link").href = `verify.html?auction=${auctionId}`;
-  $("watch").href = `verify.html?auction=${auctionId}`;
-  $("case-label").textContent = `Case ${short(auctionId)}`;
-  const L = manifest.ladder_zat;
-  $("case-facts").textContent =
-    `${manifest.supply} item${manifest.supply === 1 ? "" : "s"} · ${L.length} price levels from ${zec(L[0])} to ${zec(L[L.length - 1])} ZEC · ` +
-    `bond ${zec(manifest.bond_zat)} ZEC · closes at block ${manifest.close_height} · ${log.entries.length} sealed so far · ` +
-    `committee ${manifest.committee.members.join(", ")} (each signed this case file)`;
+  const m = manifest;
+  const L = m.ladder_zat;
+  $("report-nav").href = `verify.html?auction=${auctionId}`;
+  $("crumb").textContent = `Block sale ${short(auctionId)}`;
+  $("title").textContent = `Block sale ${short(auctionId)}`;
+  $("subtitle").textContent = `Uniform-price sealed-bid sale of ${m.supply} unit${m.supply === 1 ? "" : "s"} · closes at block ${m.close_height.toLocaleString("en-US")}`;
+  $("k-units").textContent = String(m.supply);
+  $("k-range").replaceChildren(`${zec(L[0])} – ${zec(L[L.length - 1])}`, el("small", "", " ZEC"));
+  $("k-dep").replaceChildren(zec(m.bond_zat), el("small", "", " ZEC"));
+  $("k-orders").textContent = String(log.entries.length);
+
+  const dl = $("terms");
+  term(dl, "Offering ID", auctionId);
+  term(dl, "Instrument", `Tally item, collection ${short(m.collection_id)}`, false);
+  term(dl, "Units offered", String(m.supply));
+  term(dl, "Price ladder", `${L.length} levels, ${zec(L[0])} to ${zec(L[L.length - 1])} ZEC in steps of ${zec(L[1] - L[0])}`);
+  term(dl, "Pricing", "Uniform clearing price; ties broken by a public seed", false);
+  term(dl, "Refundable deposit", `${zec(m.bond_zat)} ZEC per order`);
+  term(dl, "Minimum book size", `${m.min_batch} funded orders, else void and refunded`);
+  term(dl, "Order window", `blocks ${m.open_height.toLocaleString("en-US")} – ${m.close_height.toLocaleString("en-US")}`);
+  term(dl, "Settlement window", `${m.settle_window_blocks} blocks after close`);
+  term(dl, "Settlement", "Delivery-versus-payment in one shielded Ironwood transaction", false);
+  term(dl, "Clearing committee", `${m.committee.t}-of-${m.committee.n} threshold`);
+  term(dl, "Deposit escrow", m.escrow_ua);
+
+  const mini = $("ladder-mini");
+  mini.style.setProperty("--n", L.length);
+  mini.replaceChildren(...L.map(() => el("i")));
+  $("lad-lo").textContent = zec(L[0]);
+  $("lad-hi").textContent = zec(L[L.length - 1]);
+
+  const members = $("members");
+  m.committee.members.forEach((name, i) => {
+    const j = i + 1;
+    const row = el("div", "member");
+    const who = el("div", "who");
+    who.append(el("b", "", name), el("small", "", `member ${j} · key ${short(String(m.committee.X[i]))}`));
+    const endorsed = (m.endorsements ?? []).some((e) => e.j === j);
+    row.append(el("span", "av", name.trim()[0]?.toUpperCase() ?? "?"), who, el("span", endorsed ? "check" : "pill bad", endorsed ? "✓ Co-signed" : "Missing"));
+    members.append(row);
+  });
+
+  const book = $("book");
+  if (!log.entries.length) {
+    const tr = el("tr");
+    const td = el("td", "empty", "No orders yet. The book shows only ciphertext, never limits.");
+    td.colSpan = 4;
+    tr.append(td);
+    book.append(tr);
+  }
+  for (const e of log.entries) {
+    const tr = el("tr");
+    tr.append(el("td", "num", String(e.i)), el("td", "mono", short(e.ballot.P)), el("td", "mono", short(e.entry_hash)), el("td", "mono faint", `${e.ballot.c.length} encrypted cells`));
+    book.append(tr);
+  }
+
   if (log.close) {
-    $("headline").textContent = "This vault is already shut.";
-    $("seal-btn").disabled = true;
-    status("seal-status", "Bidding closed. Watch the case instead.");
+    setState(log.result ? "Cleared" : "Closed · clearing", "wait");
+    return blockTicket("The order window has closed. See the clearing report.");
   }
-  buildDial(L.length);
-  setLevel(Math.ceil(L.length / 2));
+  setState("Open for orders");
+
+  // Ticket: the limit is a ladder level.
+  const sel = $("limit");
+  sel.replaceChildren(...L.map((p, i) => Object.assign(el("option", "", zec(p)), { value: String(i + 1) })));
+  sel.value = String(Math.ceil(L.length / 2));
+  const quick = $("quick");
+  for (const [label, k] of [["Floor", 1], ["Mid", Math.ceil(L.length / 2)], ["Ceiling", L.length]]) {
+    const b = el("button", "", `${label} ${zec(L[k - 1])}`);
+    b.type = "button";
+    b.addEventListener("click", () => setLevel(k));
+    quick.append(b);
+  }
+  $("sum-dep").textContent = `${zec(m.bond_zat)} ZEC`;
+  setLevel(Number(sel.value));
 }
 
-// ---- dial: 16 notches = 16 price levels ----
-function buildDial(levels) {
-  const g = $("ticks");
-  g.replaceChildren();
-  for (let i = 0; i < levels; i++) {
-    const a = ((-150 + (300 * i) / (levels - 1)) * Math.PI) / 180;
-    const line = document.createElementNS(SVG, "line");
-    line.setAttribute("x1", 170 + 136 * Math.sin(a));
-    line.setAttribute("y1", 170 - 136 * Math.cos(a));
-    line.setAttribute("x2", 170 + 152 * Math.sin(a));
-    line.setAttribute("y2", 170 - 152 * Math.cos(a));
-    line.setAttribute("stroke-width", "3");
-    line.dataset.k = i + 1;
-    g.append(line);
-  }
-  const range = $("range");
-  range.max = levels;
+function level() {
+  return Number($("limit").value);
 }
-
 function setLevel(k) {
   const L = manifest.ladder_zat;
-  const range = $("range");
-  range.value = k;
-  const angle = -150 + (300 * (k - 1)) / (L.length - 1);
-  $("knob").style.transform = `rotate(${angle}deg)`;
-  for (const t of $("ticks").children) t.setAttribute("stroke", Number(t.dataset.k) <= k ? "#e9ecef" : "#3a4148");
-  $("amt").textContent = `${zec(L[k - 1])} ZEC`;
-  range.setAttribute("aria-valuetext", `${zec(L[k - 1])} ZEC`);
+  k = Math.max(1, Math.min(L.length, k));
+  $("limit").value = String(k);
+  $("sum-max").textContent = `${zec(L[k - 1] + manifest.bond_zat)} ZEC`;
 }
+$("limit").addEventListener("change", () => setLevel(level()));
+$("dec").addEventListener("click", () => manifest && setLevel(level() - 1));
+$("inc").addEventListener("click", () => manifest && setLevel(level() + 1));
 
-$("range").addEventListener("input", (e) => setLevel(Number(e.target.value)));
-// Drag the dial itself.
-$("dial").addEventListener("pointerdown", (e) => {
-  const dial = $("dial");
-  const move = (ev) => {
-    const r = dial.getBoundingClientRect();
-    const deg = (Math.atan2(ev.clientX - (r.left + r.width / 2), -(ev.clientY - (r.top + r.height / 2))) * 180) / Math.PI;
-    const L = manifest.ladder_zat.length;
-    const k = Math.round(((Math.max(-150, Math.min(150, deg)) + 150) / 300) * (L - 1)) + 1;
-    setLevel(k);
-  };
-  move(e);
-  dial.setPointerCapture(e.pointerId);
-  dial.onpointermove = move;
-  dial.onpointerup = () => (dial.onpointermove = null);
+// ---- review ----
+$("review-btn").addEventListener("click", () => {
+  if (!manifest) return;
+  $("rv-off").textContent = short(auctionId);
+  $("rv-limit").textContent = `${zec(manifest.ladder_zat[level() - 1])} ZEC`;
+  $("rv-dep").textContent = `${zec(manifest.bond_zat)} ZEC`;
+  show("t-review");
 });
+$("back-btn").addEventListener("click", () => show("t-enter"));
 
 // ---- seal + submit ----
 $("seal-btn").addEventListener("click", async () => {
   const btn = $("seal-btn");
   btn.disabled = true;
-  status("seal-status", "Sealing in your browser…");
-  let maxZat = manifest.ladder_zat[Number($("range").value) - 1];
+  $("back-btn").disabled = true;
+  status("seal-status", "Encrypting in your browser…");
+  let maxZat = manifest.ladder_zat[level() - 1];
   try {
     sealed = tally.sealBallot(manifest, maxZat);
   } catch (e) {
     status("seal-status", e.message, "err");
     btn.disabled = false;
+    $("back-btn").disabled = false;
     return;
   }
-  // The bid has done its job. Drop every trace of it from the page: the
-  // readout, the accessible value, the knob angle and the lit notches.
+  // The limit has done its job. Remove every trace of it from the page.
   maxZat = null;
-  $("amt").textContent = "—";
-  $("range").removeAttribute("aria-valuetext");
-  $("knob").style.transform = "";
-  $("ticks").replaceChildren();
-  $("range").value = 1;
-  $("range").disabled = true;
-  $("dial").hidden = true;
-  $("readout").hidden = true;
-  $("range").hidden = true;
-  const env = $("envelope");
-  env.hidden = false;
-  $("env-contents").textContent = sealed.ballot.c.map((c) => c.A).join(" ");
-  requestAnimationFrame(() => requestAnimationFrame(() => env.classList.add("sealed")));
-  step(2);
-  $("stage-title").textContent = "Sealed. Slipping it under the door…";
-  $("stage-body").textContent = `${sealed.levels_sealed} encrypted yes/no cells, each with a proof it holds 0 or 1, plus proofs the cells only step down.`;
+  $("limit").replaceChildren();
+  $("quick").replaceChildren();
+  $("sum-max").textContent = "—";
+  $("rv-limit").textContent = "sealed";
+  status("seal-status", "Submitting ciphertext to the desk…");
 
   try {
     const r = await fetch(`v1/auctions/${auctionId}/ballots`, {
@@ -155,31 +198,30 @@ $("seal-btn").addEventListener("click", async () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(sealed.ballot),
     });
-    if (!r.ok) throw new Error(r.status === 409 ? "The bulletin is closed or saw this key already." : `Bulletin refused the ballot (HTTP ${r.status}).`);
+    if (!r.ok) throw new Error(r.status === 409 ? "The order window is closed, or this order was already submitted." : `The desk refused the order (HTTP ${r.status}).`);
     sealed.receipt = await r.json();
-    if (!tally.verifyReceipt(sealed.receipt, bulletinPk, auctionId)) throw new Error("Receipt signature is invalid. Keep your key and report this.");
+    if (!tally.verifyReceipt(sealed.receipt, bulletinPk, auctionId)) throw new Error("The receipt signature is invalid. Keep your key and report this.");
   } catch (e) {
     status("seal-status", e.message, "err");
     return;
   }
-  $("stage-title").textContent = `On the books as ballot #${sealed.receipt.i}.`;
-  status("seal-status", "Receipt verified: signed by the bulletin.", "ok");
-  btn.hidden = true;
-  renderReceipt();
-  step(3);
-  $("stage-bond").hidden = false;
-  $("stage-bond").scrollIntoView({ behavior: "smooth", block: "start" });
+  const kv = $("receipt");
+  for (const [k, v] of [["Order #", String(sealed.receipt.i)], ["Order ID", short(sealed.P)], ["Entry hash", short(sealed.receipt.entry_hash)], ["Cells sealed", String(sealed.levels_sealed)]]) {
+    kv.append(el("span", "", k), el("span", "", v));
+  }
+  $("k-orders").textContent = String(sealed.receipt.i + 1);
+  show("t-track");
 });
 
 window.addEventListener("beforeunload", (e) => {
   if (sealed?.receipt && !keySaved) e.preventDefault();
 });
 
-// ---- bond ----
+// ---- deposit ----
 $("bond-btn").addEventListener("click", () => {
   const refund = $("refund").value.trim();
   if (!/^(utest1|u1)[0-9a-z]{50,}$/.test(refund)) {
-    status("bond-status", "Paste a unified address (starts with utest1 on testnet).", "err");
+    status("bond-status", "Paste a unified address (utest1… on testnet).", "err");
     $("refund").setAttribute("aria-invalid", "true");
     return;
   }
@@ -196,49 +238,26 @@ $("bond-btn").addEventListener("click", () => {
   $("escrow-addr").textContent = manifest.escrow_ua;
   $("uri").textContent = uri;
   $("open-wallet").href = uri;
+  $("dep-form").hidden = true;
   $("bond-out").hidden = false;
-  status("bond-status", `${zec(manifest.bond_zat)} ZEC to the escrow.`, "ok");
 });
 
-for (const [btn, src] of [["copy-memo", "memo-text"], ["copy-addr", "escrow-addr"]]) {
+for (const [btn, src] of [["copy-memo", "memo-text"], ["copy-addr", "escrow-addr"], ["copy-uri", "uri"]]) {
   $(btn).addEventListener("click", async () => {
     await navigator.clipboard.writeText($(src).textContent);
     $(btn).textContent = "Copied";
   });
 }
 
-$("copy-uri").addEventListener("click", async () => {
-  await navigator.clipboard.writeText($("uri").textContent);
-  $("copy-uri").textContent = "Copied";
-});
-
 $("bond-done").addEventListener("click", () => {
-  step(4);
-  $("stage-key").hidden = false;
-  $("stage-key").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("tr2").className = "done";
+  $("tr2").querySelector(".dot").textContent = "✓";
+  $("bond-out").hidden = true;
+  $("tr3").className = "now";
+  $("key-box").hidden = false;
 });
 
 // ---- key ----
-function renderReceipt() {
-  const ul = $("receipt");
-  ul.replaceChildren();
-  for (const [k, v] of [
-    ["Ballot #", String(sealed.receipt.i)],
-    ["Ballot ID", short(sealed.P)],
-    ["Entry hash", short(sealed.receipt.entry_hash)],
-  ]) {
-    const li = document.createElement("li");
-    const a = document.createElement("span");
-    a.className = "label";
-    a.textContent = k;
-    const b = document.createElement("span");
-    b.className = "hash";
-    b.textContent = v;
-    li.append(a, b);
-    ul.append(li);
-  }
-}
-
 $("key-btn").addEventListener("click", () => {
   // Same shape as `tally-settle bid` records, so `sale-build --claim` accepts it.
   const key = {
@@ -254,12 +273,14 @@ $("key-btn").addEventListener("click", () => {
   const a = document.createElement("a");
   a.href = url;
   // A generic name: the file list on a seized or synced machine shouldn't
-  // say which auction or ballot number this was.
+  // say which offering or order number this was.
   a.download = "tally-key.json";
   a.click();
   URL.revokeObjectURL(url);
   keySaved = true;
   $("key-btn").textContent = "Key saved";
+  $("tr3").className = "done";
+  $("tr3").querySelector(".dot").textContent = "✓";
 });
 
-loadCase();
+loadOffering();

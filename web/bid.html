@@ -5,113 +5,152 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <title>Place a bid — Tally</title>
+  <title>Offering · Tally</title>
+  <link rel="preload" href="fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="shared/style.css">
   <script src="shared/frame.js"></script>
   <script type="module" src="shared/bid.js"></script>
 </head>
 <body>
-  <div class="bar"><div class="wrap">
-    <a class="brand" href="./">T<span>A</span>LLY</a>
+  <header class="top"><div class="wrap">
+    <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
+    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="verify.html" id="report-nav">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
     <span class="net">Zcash testnet · Ironwood</span>
-    <nav><a href="./">Cases</a><a href="verify.html" id="verify-link">Verify</a><a href="https://github.com/Demiladepy/tally">Source</a></nav>
-  </div></div>
+  </div></header>
+
+  <section class="head"><div class="wrap">
+    <div class="crumbs"><a href="./">Offerings</a> / <span id="crumb">Offering</span></div>
+    <div class="head-row">
+      <div>
+        <h1 id="title">Loading offering…</h1>
+        <p class="sub" id="subtitle">Uniform-price sealed-bid block sale</p>
+      </div>
+      <span class="pill" id="state">—</span>
+    </div>
+    <div class="kpis">
+      <div><div class="k">Units offered</div><div class="v" id="k-units">—</div></div>
+      <div><div class="k">Price range</div><div class="v" id="k-range">—</div></div>
+      <div><div class="k">Refundable deposit</div><div class="v" id="k-dep">—</div></div>
+      <div><div class="k">Sealed orders</div><div class="v" id="k-orders">—</div></div>
+    </div>
+  </div></section>
 
   <main class="wrap">
-    <section class="verdict">
-      <span class="label" id="case-label">Loading the case file…</span>
-      <div class="big" id="headline">Crack the vault. Quietly.</div>
-      <p class="lede" id="case-facts"></p>
-    </section>
+    <div class="desk">
+      <div>
+        <div class="tabs" role="tablist" aria-label="Offering details">
+          <button role="tab" aria-selected="true" data-tab="terms">Term sheet</button>
+          <button role="tab" aria-selected="false" data-tab="rules">Clearing rules</button>
+          <button role="tab" aria-selected="false" data-tab="committee">Committee</button>
+          <button role="tab" aria-selected="false" data-tab="book">Order book</button>
+        </div>
 
-    <ol class="steps" aria-label="Bid steps">
-      <li id="s1" aria-current="step">01 · Set your max</li>
-      <li id="s2">02 · Seal</li>
-      <li id="s3">03 · Bond</li>
-      <li id="s4">04 · Keep your key</li>
-    </ol>
+        <section class="card card-pad" data-panel="terms">
+          <dl class="terms" id="terms"></dl>
+        </section>
 
-    <!-- 1 + 2: dial and envelope -->
-    <section class="stage" id="stage-seal">
-      <div class="dial-wrap">
-        <div class="dial" id="dial" aria-hidden="true">
-          <svg viewBox="0 0 340 340">
-            <circle cx="170" cy="170" r="160" fill="#15181b" stroke="#3a4148" stroke-width="2"/>
-            <circle cx="170" cy="170" r="128" fill="#0e1012" stroke="#2a2f35" stroke-width="1"/>
-            <g id="ticks"></g>
-            <g class="knob" id="knob">
-              <circle cx="170" cy="170" r="92" fill="#1c2024" stroke="#3a4148" stroke-width="2"/>
-              <circle cx="170" cy="170" r="70" fill="none" stroke="#2a2f35" stroke-width="10" stroke-dasharray="2 6"/>
-              <rect x="166" y="82" width="8" height="34" rx="1" fill="#e9ecef"/>
-            </g>
-            <circle cx="170" cy="170" r="10" fill="#2a2f35"/>
-          </svg>
-        </div>
-        <div class="envelope" id="envelope" hidden>
-          <div class="body"></div>
-          <div class="contents" id="env-contents"></div>
-          <div class="flap"></div>
-          <div class="stamp">SEALED</div>
-        </div>
-        <div class="dial-readout" id="readout">
-          <span class="label">Your max</span>
-          <span class="amt" id="amt">—</span>
-        </div>
-        <input class="dial-range" id="range" type="range" min="1" max="16" step="1" value="1" aria-label="Your maximum price" aria-describedby="private">
+        <section class="card card-pad prose" data-panel="rules" hidden>
+          <p><b>One price for everyone.</b> Every order that clears pays the same clearing price: the highest price level at which demand still covers the units offered. Your limit is a ceiling, not what you pay.</p>
+          <p><b>Your limit stays sealed.</b> The ticket turns your limit into an encrypted yes/no at each price level, with zero-knowledge proofs that it is well formed. No one, including the desk, can read it.</p>
+          <p><b>Only aggregates are opened.</b> At close the committee opens only the few aggregate totals a binary search needs to find the clearing level. If there are more winners than units at that level, ties are broken by a public random seed.</p>
+          <p><b>Deposits.</b> Each order needs a small refundable deposit in shielded ZEC. Allocated orders that don't settle forfeit it to a forfeit address, never to the seller. Everyone else is refunded.</p>
+          <div class="ladder-mini" id="ladder-mini" aria-hidden="true"></div>
+          <div class="ladder-cap"><span id="lad-lo"></span><span>every level stays sealed unless the search needs its total</span><span id="lad-hi"></span></div>
+        </section>
+
+        <section class="card card-pad" data-panel="committee" hidden>
+          <p class="muted lead-note">This offering was co-signed by every member of the clearing committee. Your browser checks each signature before it will seal an order.</p>
+          <div id="members"></div>
+        </section>
+
+        <section class="card" data-panel="book" hidden>
+          <div class="table-wrap"><table>
+            <thead><tr><th>#</th><th>Order ID</th><th>Entry hash</th><th>Contents</th></tr></thead>
+            <tbody id="book"></tbody>
+          </table></div>
+        </section>
       </div>
-      <div class="copy">
-        <h2 id="stage-title">Turn the dial to the most you'd pay.</h2>
-        <p class="dim" id="stage-body">If the auction clears at or below your max, you win and pay the clearing price, the same as every other winner. Above it, you don't win and your bond comes back.</p>
-        <div class="row">
-          <button class="btn primary" id="seal-btn" type="button">Seal my bid</button>
+
+      <aside class="card ticket" aria-labelledby="t-title">
+        <div class="t-head"><h2 id="t-title">Order ticket</h2><span class="faint mono t-meta">1 unit per order</span></div>
+
+        <!-- 1. enter -->
+        <div class="t-body" id="t-enter">
+          <label class="field">
+            <span>Limit price <small>ZEC per unit</small></span>
+            <div class="stepper">
+              <button type="button" id="dec" aria-label="Lower limit">−</button>
+              <select id="limit" aria-label="Limit price in ZEC"></select>
+              <button type="button" id="inc" aria-label="Raise limit">+</button>
+            </div>
+            <div class="quick" id="quick"></div>
+          </label>
+          <div class="summary">
+            <div><span>Quantity</span><b>1 unit</b></div>
+            <div><span>You pay if allocated</span><b>clearing price ≤ limit</b></div>
+            <div><span>Refundable deposit</span><b id="sum-dep">—</b></div>
+            <div class="total"><span>Maximum outlay</span><b id="sum-max">—</b></div>
+          </div>
+          <div class="lock">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            <span>Your limit is encrypted in this tab before anything is sent. The desk only ever receives ciphertext.</span>
+          </div>
+          <button class="btn cta block" id="review-btn" type="button">Review order</button>
+          <span class="status" id="enter-status" role="status" aria-live="polite"></span>
+        </div>
+
+        <!-- 2. review -->
+        <div class="t-body review" id="t-review" hidden>
+          <h3>Review sealed order</h3>
+          <p class="muted small">Once sealed, the limit can't be changed or read back, not even by you.</p>
+          <div class="summary">
+            <div><span>Offering</span><b id="rv-off">—</b></div>
+            <div><span>Side</span><b>Buy · 1 unit</b></div>
+            <div><span>Limit price</span><b id="rv-limit">—</b></div>
+            <div><span>Deposit</span><b id="rv-dep">—</b></div>
+            <div><span>Settlement</span><b>Atomic, shielded ZEC</b></div>
+          </div>
+          <div class="row2">
+            <button class="btn" id="back-btn" type="button">Edit</button>
+            <button class="btn cta" id="seal-btn" type="button">Seal &amp; submit</button>
+          </div>
           <span class="status" id="seal-status" role="status" aria-live="polite"></span>
         </div>
-        <p class="private-note" id="private">Your number never leaves this tab. The browser encrypts a yes/no for each of the price levels; only that ciphertext and its proofs go to the bulletin.</p>
-      </div>
-    </section>
 
-    <!-- 3: bond -->
-    <section class="stage" id="stage-bond" hidden>
-      <div class="copy">
-        <h2>Post the bond.</h2>
-        <p class="dim">A small shielded payment to the escrow. It keeps bids honest: winners who don't pay lose it, to a forfeit address, never to the seller. Everyone else gets it back.</p>
-        <div class="field">
-          <label class="label" for="refund">Refund address: a fresh unified address from your wallet</label>
-          <input id="refund" type="text" spellcheck="false" autocomplete="off" placeholder="utest1… (use a new address, not one you've shared)">
+        <!-- 3. progress -->
+        <div class="t-body" id="t-track" hidden>
+          <ol class="track">
+            <li class="done" id="tr1"><span class="dot">✓</span><h4>Order sealed &amp; on the book</h4><p id="tr1-text">Receipt signed by the desk and verified in your browser.</p>
+              <div class="kv" id="receipt"></div></li>
+            <li class="now" id="tr2"><span class="dot">2</span><h4>Fund the deposit</h4><p>Paste a fresh shielded address from your wallet for the refund, then pay the payment request.</p>
+              <div class="inner" id="dep-form">
+                <input id="refund" type="text" spellcheck="false" autocomplete="off" placeholder="Refund address · utest1… (Orchard-only, unused)">
+                <div class="btn-row"><button class="btn sm cta" id="bond-btn" type="button">Create payment request</button></div>
+                <span class="status" id="bond-status" role="status"></span>
+              </div>
+              <div class="inner" id="bond-out" hidden>
+                <div class="uri" id="uri"></div>
+                <div class="btn-row"><a class="btn sm cta" id="open-wallet" href="#">Open in wallet</a><button class="btn sm" id="copy-uri" type="button">Copy request</button><button class="btn sm" id="bond-done" type="button">I've paid</button></div>
+                <details class="manual">
+                  <summary>Pay by hand instead</summary>
+                  <p class="faint mt8">Send exactly the deposit to</p>
+                  <div class="uri" id="escrow-addr"></div>
+                  <div class="btn-row"><button class="btn sm" id="copy-addr" type="button">Copy address</button></div>
+                  <p class="faint mt8">with this memo, exactly as written</p>
+                  <div class="uri" id="memo-text"></div>
+                  <div class="btn-row"><button class="btn sm" id="copy-memo" type="button">Copy memo</button></div>
+                </details>
+              </div></li>
+            <li id="tr3"><span class="dot">3</span><h4>Save your order key</h4><p>The key proves the order is yours if it's allocated. It does not contain your limit.</p>
+              <div class="inner" id="key-box" hidden>
+                <div class="btn-row"><button class="btn sm cta" id="key-btn" type="button">Download order key</button><a class="btn sm" href="orders.html">Go to Orders</a></div>
+              </div></li>
+          </ol>
         </div>
-        <div class="row"><button class="btn primary" id="bond-btn" type="button">Make payment request</button><span class="status" id="bond-status" role="status"></span></div>
-      </div>
-      <div class="copy" id="bond-out" hidden>
-        <span class="label">Pay with any Ironwood wallet</span>
-        <div class="uri" id="uri"></div>
-        <div class="row"><a class="btn primary" id="open-wallet" href="#">Open in wallet</a><button class="btn" id="copy-uri" type="button">Copy</button></div>
-        <p class="private-note">The memo carries only your ballot's hash and the refund address. No amount, no name.</p>
-        <details class="manual">
-          <summary class="label">Wallet doesn't open the link? Pay by hand</summary>
-          <span class="label">Send exactly the bond amount to</span>
-          <div class="uri" id="escrow-addr"></div>
-          <div class="row"><button class="btn" id="copy-addr" type="button">Copy address</button></div>
-          <span class="label">With this memo, exactly as written</span>
-          <div class="uri" id="memo-text"></div>
-          <div class="row"><button class="btn" id="copy-memo" type="button">Copy memo</button></div>
-        </details>
-        <div class="row"><button class="btn" id="bond-done" type="button">I've paid the bond</button></div>
-      </div>
-    </section>
-
-    <!-- 4: key -->
-    <section class="stage" id="stage-key" hidden>
-      <div class="copy">
-        <h2>Keep your key. It's how you claim a win.</h2>
-        <p class="dim">The key file holds your ballot's private key and the bulletin's signed receipt. It does not contain your bid. If you win, the seller asks for a signature from this key before releasing the item.</p>
-        <div class="row"><button class="btn primary" id="key-btn" type="button">Download bid key</button><a class="btn" id="watch" href="verify.html">Watch the case</a></div>
-      </div>
-      <div class="copy">
-        <span class="label">Receipt</span>
-        <ul class="rows" id="receipt"></ul>
-      </div>
-    </section>
+      </aside>
+    </div>
   </main>
-  <footer class="foot"><div class="wrap">Sealing happens in WebAssembly in this tab. The page loads nothing from third parties.</div></footer>
+
+  <footer class="foot"><div class="wrap"><span>Tally · sealed-bid block auctions on Zcash</span><span>Sealing runs in WebAssembly in this tab. Nothing is loaded from third parties.</span></div></footer>
 </body>
 </html>
