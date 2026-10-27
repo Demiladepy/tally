@@ -18,7 +18,7 @@ Deadline: Oct 28, 23:59 UTC (00:59 Oct 29 Lagos). Target: submit by 18:00 Lagos 
 - [ ] Shielded ZEC address for prize payout (a fresh one from your own wallet)
 - [ ] Submit by 18:00 Lagos, Oct 28
 - [ ] Optional: a funded mainnet run (wallets ready; needs ~0.02 ZEC; not required by any rule we could find)
-- [ ] Optional: a hosted bulletin so judges can bid live
+- [x] Hosted desk so judges can bid live: https://tally-zec.fly.dev (Fly.io, one 256MB machine + 1GB volume, approved for one month; delete reminder set for Nov 26: `fly apps destroy tally-zec`)
 - [ ] Re-test after NU7 activates on mainnet (~Nov 5, height 3,543,405)
 
 ## Video script (≈2:30)
@@ -36,8 +36,9 @@ Deadline: Oct 28, 23:59 UTC (00:59 Oct 29 Lagos). Target: submit by 18:00 Lagos 
 
 ### Recording tips
 - Use the live verify link for the reveal.
-- For the bid flow, start the local bulletin (it keeps its data, so the case below survives restarts):
-  `tally-bulletin --listen 127.0.0.1:8787 --data ../bulletin-run/data --key ../bulletin-run/bulletin.key --web ./web`
-  then open http://127.0.0.1:8787/bid.html?auction=0bbd3ea5c8b2014786de38a62abd9381a2e8e547f19f44e3f3901286de21e94c
-  ("Genesis Lot 001": v2 terms endorsed by all 3 members, 2 freshly minted items, open until testnet block 4,564,341).
+- For the bid flow, use the hosted desk:
+  https://tally-zec.fly.dev/bid.html?auction=0bbd3ea5c8b2014786de38a62abd9381a2e8e547f19f44e3f3901286de21e94c
+  ("Genesis Lot 001": v2 terms endorsed by all 3 members, 2 freshly minted items, open until testnet block 4,564,341, around Nov 21).
+  It already holds one unfunded test order (order #0, from the deploy check); unfunded orders are excluded at clearing.
+  Fallback if it's down: the local desk, `tally-bulletin --listen 127.0.0.1:8787 --data ../bulletin-run/data --key ../bulletin-run/bulletin.key --web ./web`, same link on http://127.0.0.1:8787.
 - For the red run, save `auction-log.json`, edit one `price_zat`, and drop the file on the page.

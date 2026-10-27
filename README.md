@@ -4,7 +4,7 @@
 
 **ZECATHON 2026 · Private Markets track**
 
-[**Audit a real clearing in your browser →**](https://demiladepy.github.io/tally/verify.html?sample=testnet-2026-10-22) &nbsp;·&nbsp; [Desk (static demo)](https://demiladepy.github.io/tally/) &nbsp;·&nbsp; [Threat model](docs/THREAT_MODEL.md) &nbsp;·&nbsp; [Protocol](docs/PROTOCOL.md)
+[**Place a sealed order on the live desk →**](https://tally-zec.fly.dev/bid.html?auction=0bbd3ea5c8b2014786de38a62abd9381a2e8e547f19f44e3f3901286de21e94c) &nbsp;·&nbsp; [**Audit a real clearing in your browser →**](https://demiladepy.github.io/tally/verify.html?sample=testnet-2026-10-22) &nbsp;·&nbsp; [Threat model](docs/THREAT_MODEL.md) &nbsp;·&nbsp; [Protocol](docs/PROTOCOL.md)
 
 ---
 
@@ -123,12 +123,13 @@ Before submission, a second model was asked to do one thing: find every way Tall
 - **The demo committee's three keys are run by one person.** The DKG tooling supports three independent members.
 - **Testnet only.** Wallets and tooling are ready for mainnet, on stable NU7-ready libraries with mainnet NU7 at height 3,543,405. A funded mainnet run hasn't happened.
 - **What's sold is a Tally carrier note**, an on-chain item with verifiable lineage. Selling arbitrary assets needs Zcash Shielded Assets.
-- **The live desk isn't hosted.** The clearing report runs anywhere. Placing orders needs a running desk (one command, below).
+- **The hosted desk is a testnet demo on one small Fly.io machine**, kept up through judging. The desk itself keeps no request logs, but Fly's edge proxy in front of it may log connection metadata such as IP addresses. Anyone can run their own desk (one command, below), and nothing in the clearing report depends on trusting ours.
 - Deposits are shielded, so the public trusts the same 2-of-3 quorum for which orders were funded as for decryption.
 - Lineage is checked one hop back, not to the mint. An unsettled allocation isn't re-offered automatically.
 
 ## Try it
 
+- **Live desk (testnet):** [Genesis Lot 001](https://tally-zec.fly.dev/bid.html?auction=0bbd3ea5c8b2014786de38a62abd9381a2e8e547f19f44e3f3901286de21e94c). Set a limit, seal it, and get a signed receipt; your limit never leaves the tab. Orders count at clearing only once their deposit is paid in testnet ZEC. Open until testnet block 4,564,341 (around Nov 21).
 - **No install:** [the clearing report](https://demiladepy.github.io/tally/verify.html?sample=testnet-2026-10-22). Drop any `auction-log.json` on it, or edit one number and watch it go red.
 - **Run the desk locally:** `bash scripts/run-local.sh`, then open http://127.0.0.1:8787.
 - **Docker:** `docker build -t tally . && docker run --rm -p 8787:8787 -v tally-data:/data tally`

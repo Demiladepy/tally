@@ -1,6 +1,6 @@
 # Hosted desk on Fly.io: one machine, one volume for the auction logs and the
 # bulletin's receipt key. Deploy with `fly deploy`.
-app = "tally-desk"
+app = "tally-zec"
 primary_region = "ams"
 
 [build]
