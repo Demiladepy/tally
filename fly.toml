@@ -1,0 +1,30 @@
+# Hosted desk on Fly.io: one machine, one volume for the auction logs and the
+# bulletin's receipt key. Deploy with `fly deploy`.
+app = "tally-desk"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[mounts]
+  source = "tally_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  # Keep one machine up so judges never hit a cold start.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/v1/info"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
