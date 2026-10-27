@@ -45,7 +45,7 @@ async function render() {
     const settled = log?.settlements?.find((s) => s.P === key.P);
     const tr = el("tr");
     const name = el("div");
-    name.append(el("b", "", `Block sale ${short(key.auction_id)}`), el("small", "", `order #${key.receipt?.i ?? "?"}`));
+    name.append(el("b", "", log?.manifest?.title || `Block sale ${short(key.auction_id)}`), el("small", "", `order #${key.receipt?.i ?? "?"}`));
     const asset = el("div", "asset");
     asset.append(el("span", "glyph", key.auction_id.slice(0, 2).toUpperCase()), name);
     const off = el("td");

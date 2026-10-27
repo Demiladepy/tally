@@ -38,6 +38,6 @@ Deadline: Oct 28, 23:59 UTC (00:59 Oct 29 Lagos). Target: submit by 18:00 Lagos 
 - Use the live verify link for the reveal.
 - For the bid flow, start the local bulletin (it keeps its data, so the case below survives restarts):
   `tally-bulletin --listen 127.0.0.1:8787 --data ../bulletin-run/data --key ../bulletin-run/bulletin.key --web ./web`
-  then open http://127.0.0.1:8787/bid.html?auction=d9446c611c7563b334fd6ef4d2bb9e3a13c292676eb09848722546655be5bd05
-  (v2 manifest, endorsed by all 3 members, 2 freshly minted items, open until testnet block 4557966, about Oct 30).
+  then open http://127.0.0.1:8787/bid.html?auction=0bbd3ea5c8b2014786de38a62abd9381a2e8e547f19f44e3f3901286de21e94c
+  ("Genesis Lot 001": v2 terms endorsed by all 3 members, 2 freshly minted items, open until testnet block 4,564,341).
 - For the red run, save `auction-log.json`, edit one `price_zat`, and drop the file on the page.

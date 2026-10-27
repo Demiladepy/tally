@@ -42,6 +42,7 @@ fn fixture(seed: u64, supply: u64, min_batch: u64) -> (Fixture, Bulletin) {
     let seller_sk = random_scalar(&mut rng);
     let mut manifest = Manifest {
         v: MANIFEST_V2,
+        title: String::new(),
         auction_id: [0; 32],
         collection_id: [2; 32],
         supply,

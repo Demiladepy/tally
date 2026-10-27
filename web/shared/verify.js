@@ -34,7 +34,7 @@ function renderNow(log, source) {
   }
   const s = r.summary;
   const passed = r.checks.filter((c) => c.ok).length;
-  $("case-label").textContent = `Block sale ${short(s.auction_id)} · ${source}`;
+  $("case-label").textContent = `${log?.manifest?.title || `Block sale ${short(s.auction_id)}`} · ${source}`;
   verdict(
     r.all_ok,
     r.all_ok ? `Verified · ${passed} of ${r.checks.length} checks pass` : `Tampering detected · ${r.checks.length - passed} check${r.checks.length - passed === 1 ? "" : "s"} fail`,

@@ -72,8 +72,10 @@ async function loadOffering() {
   const m = manifest;
   const L = m.ladder_zat;
   $("report-nav").href = `verify.html?auction=${auctionId}`;
-  $("crumb").textContent = `Block sale ${short(auctionId)}`;
-  $("title").textContent = `Block sale ${short(auctionId)}`;
+  const name = m.title || `Block sale ${short(auctionId)}`;
+  $("crumb").textContent = name;
+  $("title").textContent = name;
+  document.title = `${name} · Tally`;
   $("subtitle").textContent = `Uniform-price sealed-bid sale of ${m.supply} unit${m.supply === 1 ? "" : "s"} · closes at block ${m.close_height.toLocaleString("en-US")}`;
   $("k-units").textContent = String(m.supply);
   $("k-range").replaceChildren(`${zec(L[0])} – ${zec(L[L.length - 1])}`, el("small", "", " ZEC"));
@@ -162,7 +164,7 @@ $("inc").addEventListener("click", () => manifest && setLevel(level() + 1));
 // ---- review ----
 $("review-btn").addEventListener("click", () => {
   if (!manifest) return;
-  $("rv-off").textContent = short(auctionId);
+  $("rv-off").textContent = manifest.title || short(auctionId);
   $("rv-limit").textContent = `${zec(manifest.ladder_zat[level() - 1])} ZEC`;
   $("rv-dep").textContent = `${zec(manifest.bond_zat)} ZEC`;
   show("t-review");

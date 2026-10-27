@@ -161,6 +161,9 @@ enum Cmd {
         forfeit_account: String,
         #[arg(long)]
         supply: u64,
+        /// Offering name shown to bidders, e.g. "Genesis Lot 001" (signed with the terms).
+        #[arg(long, default_value = "")]
+        title: String,
         /// step_zat:levels, e.g. 100000:16 for 0.001 to 0.016 ZEC.
         #[arg(long)]
         ladder: String,
@@ -343,6 +346,7 @@ fn main() -> Result<()> {
             escrow_account,
             forfeit_account,
             supply,
+            title,
             ladder,
             bond_zat,
             close_in,
@@ -352,7 +356,7 @@ fn main() -> Result<()> {
             draft,
             out,
         } => auction::create(
-            &wallet, &record, &committee, &escrow_wallet, &escrow_account, &forfeit_account, supply, &ladder,
+            &wallet, &record, &committee, &escrow_wallet, &escrow_account, &forfeit_account, supply, &title, &ladder,
             bond_zat, close_in, settle_window, min_batch, &bulletin, &draft, &out,
         ),
         Cmd::AuctionPublish { auction, draft, endorsements } => auction::publish(&auction, &draft, &endorsements),

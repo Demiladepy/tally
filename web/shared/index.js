@@ -26,7 +26,7 @@ function row(a, log) {
     : el("a", { class: "btn sm cta", href: `bid.html?auction=${a.auction_id}` }, "Place order");
   return el("tr", {},
     el("td", {}, el("div", { class: "asset" }, el("span", { class: "glyph" }, a.auction_id.slice(0, 2).toUpperCase()),
-      el("div", {}, el("b", {}, `Block sale ${short(a.auction_id)}`), el("small", {}, `${a.levels}-level ladder · uniform price`)))),
+      el("div", {}, el("b", {}, log?.manifest?.title || `Block sale ${short(a.auction_id)}`), el("small", {}, `${short(a.auction_id)} · ${a.levels}-level ladder · uniform price`)))),
     el("td", { class: "r num" }, String(a.supply)),
     el("td", { class: "r num col-hide" }, L ? `${zec(L[0])} – ${zec(L[L.length - 1])}` : "—"),
     el("td", { class: "r num col-hide" }, log ? zec(log.manifest.bond_zat) : "—"),

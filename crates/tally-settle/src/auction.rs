@@ -194,6 +194,7 @@ pub fn create(
     escrow_account: &str,
     forfeit_account: &str,
     supply: u64,
+    title: &str,
     ladder: &str,
     bond_zat: u64,
     close_in: u32,
@@ -228,6 +229,7 @@ pub fn create(
     let seller_sk = tally_crypto::random_scalar(&mut r6);
     let mut m = Manifest {
         v: MANIFEST_V2,
+        title: title.to_string(),
         auction_id: [0; 32],
         collection_id: codec::bytes32_from_hex(&mint.collection_id).map_err(|e| anyhow!("{e}"))?,
         supply,

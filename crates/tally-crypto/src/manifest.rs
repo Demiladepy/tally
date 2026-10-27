@@ -23,6 +23,8 @@ pub const MANIFEST_V2: u8 = 2;
 /// Smallest allowed batch in v2. Below this, a handful of opened totals and
 /// cells says too much about individual ballots.
 pub const MIN_BATCH_FLOOR: u64 = 5;
+/// Longest offering title, in bytes.
+pub const MAX_TITLE: usize = 80;
 pub const RECEIPT_PURPOSE: &str = "receipt-sig";
 pub const CLOSE_PURPOSE: &str = "close-sig";
 
@@ -41,6 +43,10 @@ pub struct Manifest {
     #[serde(with = "codec::bytes32")]
     pub collection_id: [u8; 32],
     pub supply: u64,
+    /// Human name of the offering, e.g. "Genesis Lot 001". Signed and hashed
+    /// like every other term when present; absent in older records.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
     pub ladder_zat: Vec<u64>,
     pub bond_zat: u64,
     pub open_height: u32,
@@ -108,6 +114,10 @@ impl Manifest {
         t.append("auction_id", &self.auction_id);
         t.append("collection_id", &self.collection_id);
         t.append_u64("supply", self.supply);
+        // Only hashed when set, so records made before titles existed keep their hashes.
+        if !self.title.is_empty() {
+            t.append("title", self.title.as_bytes());
+        }
         t.append_u64("L", self.ladder_zat.len() as u64);
         for p in &self.ladder_zat {
             t.append_u64("p", *p);
@@ -153,6 +163,9 @@ impl Manifest {
     fn check(&self, endorsements: bool) -> Result<(), Error> {
         if self.v != MANIFEST_V1 && self.v != MANIFEST_V2 {
             return Err(Error::InvalidParams("manifest version"));
+        }
+        if self.title.len() > MAX_TITLE || self.title.chars().any(|c| c.is_control()) {
+            return Err(Error::InvalidParams("title too long or has control characters"));
         }
         let l = &self.ladder_zat;
         if l.is_empty() || l.windows(2).any(|w| w[0] >= w[1]) {
@@ -280,6 +293,7 @@ mod tests {
         let sk = random_scalar(rng);
         let mut m = Manifest {
             v: MANIFEST_V2,
+            title: String::new(),
             auction_id: [1; 32],
             collection_id: [2; 32],
             supply: 8,
@@ -349,6 +363,14 @@ mod tests {
         assert_eq!(legacy.verify(), Ok(()));
         assert!(legacy.verify_current().is_err());
         assert_eq!(m.verify_current(), Ok(()));
+        // A title is a signed term: changing it breaks the id and signatures,
+        // and an over-long one is refused.
+        let mut titled = m.clone();
+        titled.title = "Genesis Lot 001".into();
+        assert_ne!(titled.content_hash(), m.content_hash());
+        assert!(titled.verify().is_err());
+        titled.title = "x".repeat(MAX_TITLE + 1);
+        assert_eq!(titled.verify(), Err(Error::InvalidParams("title too long or has control characters")));
         // A draft without endorsements passes the draft check only.
         let mut draft = m.clone();
         draft.endorsements.clear();

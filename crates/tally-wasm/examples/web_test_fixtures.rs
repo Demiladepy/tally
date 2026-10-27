@@ -30,6 +30,7 @@ fn main() {
     let seller_sk = random_scalar(&mut rng);
     let mut m = Manifest {
         v: MANIFEST_V2,
+        title: String::new(),
         auction_id: [0; 32],
         collection_id: [2; 32],
         supply: 2,

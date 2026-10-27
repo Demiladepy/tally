@@ -18,6 +18,21 @@ On testnet, a 5-bidder auction cleared at 0.012 TAZ. The committee opened **4 of
 
 ---
 
+## The use case is already here
+
+In September 2026, Zcash's biggest sale ran as a uniform-price auction. The **zkSNARKs** collection sold 8,000 identities to **16,971 bids worth 25,305 ZEC**, at one clearing price of **1.5 ZEC**, netting about **12,000 ZEC**. ([Paragraph, *zkSNARKs auction cleared 12,000 ZEC*](https://paragraph.com/@onchaindiary/zksnarks-auction-what-bidders-bought-1); [crypto.news on the bids routed in](https://crypto.news/aurora-intents-routed-19m-into-zcash-nft-auction/))
+
+It ran on the seller's own platform, and nobody outside the team can check the clearing price, the bids, or the list of who won. That matters: the project has since faced public accusations, and buyers have no way to settle the question from data. ([KuCoin News](https://www.kucoin.com/news/flash/zksnarks-nft-project-accused-of-scamming-raises-17m-with-no-practical-use))
+
+**Tally is that auction, run so it can be proven.** The same format (sealed bids, one price, refunds for losers), with three differences:
+- No bid is ever opened, not even by the people who compute the price.
+- Anyone can re-derive the price and the winners in a browser.
+- Each winner settles in one shielded transaction that neither side can finish alone.
+
+The next drop on Zcash, whether a collection, a token allocation to funds, or a DAO selling treasury ZEC in a block, doesn't have to ask buyers for trust.
+
+---
+
 ## Why this problem
 
 **1. Information leakage is a measured, recurring cost for institutions.**
@@ -48,7 +63,9 @@ Everyone who clears pays the same price, so bidding your true value is safe. Wha
 | Threshold-encrypted order book that decrypts at close | ✓ until close | ✗ (whole book revealed) | ✓ | varies | no |
 | **Tally** | **✓** | **✓ only a few aggregates are opened** | **✓ in any browser** | **✓ one Ironwood tx** | **no** |
 
-The column that matters most is the second one. Hiding orders until the auction ends and then decrypting them all still hands the whole book, with every participant's exact limit, to whoever decrypts. Tally never decrypts an order. It opens the yes-counts at a few price levels, which is just enough for a binary search to find the clearing price.
+The column that matters most is the second one, and it's where Tally goes against the grain. The usual way to make a sealed auction verifiable is to **open the book after close**: decrypt every order, publish each side, size and limit, and let anyone recompute the price. That proves the price by giving away every bidder's private valuation, permanently, to the whole world. For a fund, its limit price *is* the secret.
+
+**Tally proves the price without opening the book.** It never decrypts an order. It opens only the yes-counts at a few price levels, 4 of 16 in our run, which is just enough for a binary search to find the clearing price. Then it lets anyone check that nothing else was opened.
 
 ---
 
@@ -79,6 +96,14 @@ Network: testnet after NU7, v6 transactions, Ironwood pool only.
 | Item lineage: each new note's rho equals the previous note's nullifier | `inspect-item` → `rho==prev_nf true` in the evidence |
 | On chain: no transparent, Sapling or Orchard data. The only public value is the fee | `try-extract` output in the evidence |
 | Attacks refused | a half-signed sale, tampered terms, a loser claiming an item, a lone committee member decrypting, a replayed transaction, a manifest with a swapped committee, and 9 kinds of log tampering caught by the verifier |
+
+## How hard we tried to break it
+
+- **10,008 random order books**, each cleared twice (20,016 clearings) across nine situations: heavy ties, undersubscribed, exact fills, everyone at the ceiling or the floor, single units, single orders, books of up to 500 orders, ladders of 1 to 32 levels. Every price and every winner matched an independent reference, and no clearing opened more totals than a binary search needs. (`crates/tally-crypto/tests/soak.rs`)
+- **Full cryptographic auctions** with a real 2-of-3 committee, proofs and threshold decryption match the plain reference exactly. (`tests/simulation.rs`)
+- **Real settlement on public Zcash testnet**, not a local chain: every transaction ID in the evidence can be looked up.
+- **9 kinds of record tampering** are each caught by the browser verifier, in CI, on every deploy.
+- **34 automated tests** in total, plus the browser test suite.
 
 ## Adversarial leak review
 
@@ -122,7 +147,7 @@ Before submission, a second model was asked to do one thing: find every way Tall
 | `web/` | The desk UI: offerings, order ticket, orders, clearing report. Self-hosted fonts, strict CSP, no third-party code |
 
 ```
-cargo test --release                                          # 33 tests: crypto, simulation, desk API, memos
+cargo test --release                                          # 34 tests, incl. the 10,008-book soak (~8 min)
 cargo build --release --target wasm32-unknown-unknown -p tally-wasm
 node web/test/wasm.test.mjs target/wasm32-unknown-unknown/release/tally_wasm.wasm
 ```
