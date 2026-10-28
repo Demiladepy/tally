@@ -65,4 +65,4 @@ Disclosed rather than fixed: bracket ballots reveal an exact bid; sybil steering
 - **Lineage** is checked one hop back from a listing, not all the way to the mint.
 - **Escrow is one key**, and the demo committee is one person. Both are explained above.
 - **The winner's return channel to the seller** is out of band. A Tor drop or a bulletin mailbox with a fresh key would stop the seller learning who claimed P.
-- **Mainnet NU7.** The pinned libraries have no mainnet NU7 height (see `DAY_ONE.md`). They must be bumped before activation (~Nov 5).
+- **Mainnet NU7.** Tally uses the Oct 22 stable librustzcash releases, which set the mainnet NU7 height (3,543,405, ~Nov 5; see `DAY_ONE.md`). The flows still need a re-run on mainnet after activation.
