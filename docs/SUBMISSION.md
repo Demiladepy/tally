@@ -14,12 +14,37 @@ Deadline: Oct 28, 23:59 UTC (00:59 Oct 29 Lagos). Target: submit by 18:00 Lagos 
 - [x] Open v2 auction ready for the recording (see below)
 - [ ] 2–3 minute video (script below)
 - [ ] Tag `zecathon-submission` on the final commit
-- [ ] Track selected: Private Markets
+- [x] Track selected: Private Markets
 - [ ] Shielded ZEC address for prize payout (a fresh one from your own wallet)
 - [ ] Submit by 18:00 Lagos, Oct 28
-- [ ] Optional: a funded mainnet run (wallets ready; needs ~0.02 ZEC; not required by any rule we could find)
+- [ ] ~~Optional: a funded mainnet run~~ Not for this submission. Mainnet wallets are ready; the README states plainly that no mainnet run has happened.
+- [ ] ~~Independent committee~~ Not for this submission. `docs/COMMITTEE.md` is ready for real members; the README states the demo committee is one person.
 - [x] Hosted desk so judges can bid live: https://tally-zec.fly.dev (Fly.io, one 256MB machine + 1GB volume, approved for one month; delete reminder set for Nov 26: `fly apps destroy tally-zec`)
 - [ ] Re-test after NU7 activates on mainnet (~Nov 5, height 3,543,405)
+
+## Paste-ready submission text
+
+**Name:** Tally
+
+**Tagline:** Sealed-bid block auctions on Zcash. No order is ever opened. Anyone can prove the price.
+
+**Track:** Private Markets
+
+**Description:**
+Tally lets a seller run a block sale (a token round, a treasury sale, an NFT drop) as a uniform-price sealed-bid auction where no order is ever revealed, not to the seller, the operator, or the committee that computes the price. Buyers seal their limit price in the browser. At close, a 2-of-3 threshold committee opens only the few aggregate totals a binary search needs (4 of 16 on testnet), and one clearing price falls out. Each winner settles delivery-versus-payment in a single Ironwood transaction that neither side can finish alone. Then anyone re-runs ten checks in their browser and gets the same price and winners, or catches the cheat.
+
+Rivals that prove a sealed auction's price do it by opening every order after close. Tally proves it without opening the book.
+
+Proof: a 5-bidder auction cleared and settled on public Zcash testnet with real txids; a 10,008-book soak test matches an independent reference; nine kinds of tampering are caught. Honest limits (single-key deposit escrow, one-person demo committee, testnet only) are in the README.
+
+**Links:**
+- Repo: https://github.com/Demiladepy/tally
+- Live desk (testnet): https://tally-zec.fly.dev
+- Verify a real clearing in your browser: https://tally-zec.fly.dev/verify.html (permanent copy: https://demiladepy.github.io/tally/verify.html?sample=testnet-2026-10-22)
+- Testnet evidence: https://github.com/Demiladepy/tally/tree/main/evidence
+- Video: (add the link after uploading)
+
+**Credits:** Zarrier (Reiunmute/zcash-carrier) for carrier notes and the atomic PCZT sale pattern, re-implemented here, not vendored.
 
 ## Video script (≈2:30)
 **0:00–0:20: the problem.** "Private markets on Zcash run on trust. A sale can clear thousands of ZEC and nobody outside the operator can check the price, the bids, or who owns what. The community's main objection to the last shielded-exchange proposal was exactly this: you couldn't verify its state."
