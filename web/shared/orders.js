@@ -14,7 +14,7 @@ const el = (tag, cls, text) => {
 const keys = [];
 
 function statusOf(key, log) {
-  if (!log) return ["Desk unreachable", "bad"];
+  if (!log) return ["Open on the live desk to track", "wait"];
   const i = key.receipt?.i;
   const entry = log.entries.find((e) => e.i === i);
   if (!entry || entry.ballot.P !== key.P) return ["Not on this book", "bad"];

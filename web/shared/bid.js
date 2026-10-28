@@ -9,8 +9,11 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-const tally = await load(new URL("../tally_wasm.wasm", import.meta.url).href);
 const auctionId = new URLSearchParams(location.search).get("auction") ?? "";
+// Fetch the offering while the WebAssembly loads, not after.
+const first = /^[0-9a-f]{64}$/.test(auctionId) ? fetch(`v1/auctions/${auctionId}`).catch(() => null) : null;
+const tally = await load(new URL("../tally_wasm.wasm", import.meta.url).href);
+const LIVE_DESK = "https://tally-zec.fly.dev";
 
 let manifest = null;
 let bulletinPk = null;
@@ -53,10 +56,15 @@ async function loadOffering() {
     $("subtitle").textContent = "Pick one from the Offerings list.";
     return blockTicket("Pick an offering first.");
   }
-  const r = await fetch(`v1/auctions/${auctionId}`);
-  if (!r.ok) {
-    $("title").textContent = "Offering not found on this desk";
-    return blockTicket("This desk doesn't list that offering.");
+  const r = await first;
+  if (!r?.ok) {
+    if (location.hostname.endsWith("github.io")) {
+      // A static copy (GitHub Pages) has no order book. Point to the live one.
+      location.replace(`${LIVE_DESK}/bid.html?auction=${auctionId}`);
+      return;
+    }
+    $("title").textContent = "Offering not found";
+    return blockTicket("This desk doesn't list that offering. Pick one from Offerings.");
   }
   const log = await r.json();
   // The link names the auction id, and in v2 the id is the hash of the

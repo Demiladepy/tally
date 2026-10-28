@@ -9,6 +9,14 @@ const el = (tag, cls, text) => {
 };
 const short = (h) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 
+const q = new URLSearchParams(location.search);
+const LATEST = "testnet-2026-10-22";
+const qid = q.get("auction");
+// With no record named, open the latest public clearing rather than an empty page.
+const source = q.get("sample") || (!qid ? LATEST : null);
+const first = source
+  ? fetch(`samples/${encodeURIComponent(source)}.json`).catch(() => null)
+  : /^[0-9a-f]{64}$/.test(qid) ? fetch(`v1/auctions/${qid}`).catch(() => null) : null;
 const tally = await load(new URL("../tally_wasm.wasm", import.meta.url).href);
 
 function verdict(ok, text, sub) {
@@ -110,19 +118,13 @@ function renderNow(log, source) {
 }
 
 async function fromUrl() {
-  const q = new URLSearchParams(location.search);
-  if (q.get("sample")) {
-    const r = await fetch(`samples/${encodeURIComponent(q.get("sample"))}.json`);
-    if (r.ok) return render(await r.json(), "saved record");
+  const r = await first;
+  if (source) {
+    if (r?.ok) return render(await r.json(), source === LATEST ? "Oct 22 testnet clearing" : "saved record");
+    return verdict(null, "Open a clearing record", "Drop a saved auction-log.json below.");
   }
-  const id = q.get("auction");
-  if (!id || !/^[0-9a-f]{64}$/.test(id)) {
-    verdict(null, "Open a clearing record", "Pick an offering, drop a saved record below, or open the Oct 22 testnet clearing.");
-    return;
-  }
-  const r = await fetch(`v1/auctions/${id}`).catch(() => null);
   if (!r?.ok) {
-    verdict(false, "No such offering on this desk");
+    verdict(null, "Clearing report not available here", "Pick an offering from the Offerings list, or drop a saved auction-log.json below.");
     return;
   }
   render(await r.json(), "live from the desk");

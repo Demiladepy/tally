@@ -35,16 +35,30 @@ function row(a, log) {
     el("td", { class: "r" }, action));
 }
 
+// The Oct 22 testnet auction: cleared, settled, and verifiable from its saved record.
+function completedRow() {
+  return el("tr", {},
+    el("td", {}, el("div", { class: "asset" }, el("span", { class: "glyph" }, "F0"),
+      el("div", {}, el("b", {}, "Testnet Lot · Oct 22"), el("small", {}, "f02153…ddcc · 16-level ladder · 4 of 16 totals opened")))),
+    el("td", { class: "r num" }, "2"),
+    el("td", { class: "r num col-hide" }, "0.001 – 0.016"),
+    el("td", { class: "r num col-hide" }, "0.001"),
+    el("td", { class: "r num" }, "5"),
+    el("td", {}, el("span", { class: "pill" }, "Settled at 0.012")),
+    el("td", { class: "r" }, el("a", { class: "btn sm", href: "verify.html?sample=testnet-2026-10-22" }, "Clearing report")));
+}
+
 try {
   const auctions = (await (await fetch("v1/auctions")).json()).reverse();
   const logs = await Promise.all(auctions.map((a) => fetch(`v1/auctions/${a.auction_id}`).then((r) => r.json()).catch(() => null)));
   const tbody = $("rows");
   tbody.replaceChildren();
-  $("count").textContent = `${auctions.length} on this desk`;
+  $("count").textContent = `${auctions.filter((a) => !a.closed).length} open · 1 completed`;
   $("st-open").textContent = String(auctions.filter((a) => !a.closed).length);
   $("st-orders").textContent = String(auctions.reduce((n, a) => n + a.ballots, 0));
   if (!auctions.length) tbody.append(el("tr", {}, el("td", { colspan: "7", class: "empty" }, "No offerings on this desk yet.")));
   auctions.forEach((a, i) => tbody.append(row(a, logs[i])));
+  tbody.append(completedRow());
   const withOrders = logs.find((l) => l?.entries?.length);
   if (withOrders) paintCipher(withOrders);
   else paintCipher(await fetch("samples/testnet-2026-10-22.json").then((r) => r.json()).catch(() => null));
@@ -53,18 +67,11 @@ try {
   // auction's clearing report still verifies entirely in the browser.
   const log = await fetch("samples/testnet-2026-10-22.json").then((r) => r.json()).catch(() => null);
   paintCipher(log);
-  $("count").textContent = "Static demo · the live desk runs on a Tally bulletin";
+  $("count").textContent = "Completed · place live orders on the desk";
   $("st-open").textContent = "0";
   $("st-orders").textContent = String(log?.entries?.length ?? 5);
   const tbody = $("rows");
-  tbody.replaceChildren(
-    el("tr", {},
-      el("td", {}, el("div", { class: "asset" }, el("span", { class: "glyph" }, "F0"),
-        el("div", {}, el("b", {}, "Block sale f02153…ddcc"), el("small", {}, "Testnet · Oct 22 · 5 orders")))),
-      el("td", { class: "r num" }, "2"),
-      el("td", { class: "r num col-hide" }, "0.001 – 0.016"),
-      el("td", { class: "r num col-hide" }, "0.001"),
-      el("td", { class: "r num" }, "5"),
-      el("td", {}, el("span", { class: "pill" }, "Settled at 0.012")),
-      el("td", { class: "r" }, el("a", { class: "btn sm cta", href: "verify.html?sample=testnet-2026-10-22" }, "Clearing report"))));
+  tbody.replaceChildren(completedRow(),
+    el("tr", {}, el("td", { colspan: "7", class: "empty" },
+      "Live orders go on the hosted desk: ", el("a", { href: "https://tally-zec.fly.dev/" }, "tally-zec.fly.dev"))));
 }
