@@ -76,6 +76,24 @@ pub struct Bulletin {
     dir: Option<PathBuf>,
     limits: Limits,
     auctions: Mutex<HashMap<[u8; 32], Auction>>,
+    chain: ChainTip,
+}
+
+/// The latest block the desk has seen, filled in by a poller in the binary
+/// (see `main.rs`). The browser reads it from the desk, so it never has to
+/// contact a third party to show how far an offering is from closing.
+pub type ChainTip = Arc<std::sync::RwLock<Option<Tip>>>;
+
+#[derive(Clone, Copy, Serialize)]
+pub struct Tip {
+    pub height: u64,
+    /// Unix seconds when the desk last saw this height.
+    pub seen_at: u64,
+    /// Average seconds per block the desk has measured since it started,
+    /// once it has watched enough blocks. Testnet often runs far from the
+    /// 75-second target, so countdowns use this rather than assuming it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secs_per_block: Option<f64>,
 }
 
 type Shared = Arc<Bulletin>;
@@ -123,11 +141,17 @@ impl Bulletin {
                 auctions.insert(log.manifest.auction_id, Auction { log, seen_p });
             }
         }
-        Ok(Self { sk, pk: g() * sk, dir, limits: Limits::default(), auctions: Mutex::new(auctions) })
+        Ok(Self { sk, pk: g() * sk, dir, limits: Limits::default(), auctions: Mutex::new(auctions), chain: ChainTip::default() })
     }
 
     pub fn with_limits(mut self, limits: Limits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Share the chain tip the binary keeps up to date.
+    pub fn with_chain(mut self, chain: ChainTip) -> Self {
+        self.chain = chain;
         self
     }
 
@@ -140,6 +164,7 @@ impl Bulletin {
     pub fn router_with_web(self, web: Option<PathBuf>) -> Router {
         let api = Router::new()
             .route("/v1/info", get(info))
+            .route("/v1/chain", get(chain))
             .route("/v1/auctions", post(create).get(list))
             .route("/v1/auctions/{id}", get(get_log))
             .route("/v1/auctions/{id}/ballots", post(append))
@@ -188,6 +213,11 @@ struct Info {
 
 async fn info(State(b): State<Shared>) -> Json<Info> {
     Json(Info { bulletin_pk: b.pk })
+}
+
+async fn chain(State(b): State<Shared>) -> ApiResult<Tip> {
+    let tip = *b.chain.read().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "chain"))?;
+    tip.map(Json).ok_or((StatusCode::SERVICE_UNAVAILABLE, "chain height not known yet"))
 }
 
 async fn create(State(b): State<Shared>, Body(m): Body<Manifest>) -> ApiResult<AuctionLog> {

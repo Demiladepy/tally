@@ -43,6 +43,14 @@ export const api = {
   /** Bulletin's signed inclusion receipt. */
   verifyReceipt: (receipt, bulletinPk, auctionId) =>
     call("tally_verify_receipt", { receipt, bulletin_pk: bulletinPk, auction_id: auctionId }),
+  /** Seller: draft and sign an offering. Returns { draft, seller_key }. */
+  draftOffering: (terms) => call("tally_draft_offering", { ...terms, seed_hex: seedHex() }),
+  /** Seller: attach endorsements; returns the publishable manifest. */
+  attachEndorsements: (draft, endorsements) => call("tally_attach_endorsements", { draft, endorsements }),
+  /** Seller: sign the close of the log at its current head. */
+  signClose: (sellerSk, log) => call("tally_sign_close", { seller_sk: sellerSk, log, seed_hex: seedHex() }),
+  /** QR code (SVG string) for a payment request. */
+  qrSvg: (text) => call("tally_qr_svg", { text }),
   /** Win claim over a listing hash. */
   signClaim: (ballotSk, listingHash) =>
     call("tally_sign_claim", { ballot_sk: ballotSk, listing_hash: listingHash, seed_hex: seedHex() }),
@@ -58,6 +66,21 @@ export function zip321(address, zat, memoHex) {
   const b64 = btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const amount = (zat / 1e8).toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
   return `zcash:${address}?amount=${amount}&memo=${b64}`;
+}
+
+/** The desk's view of the chain tip, or null if it doesn't track one. */
+export async function chainTip() {
+  const r = await fetch("v1/chain").catch(() => null);
+  return r?.ok ? r.json() : null;
+}
+
+/** "2,345 blocks (≈ 14 h)" — time only when the desk has measured the pace. */
+export function blocksLeft(n, tip) {
+  const blocks = `${n.toLocaleString("en-US")} block${n === 1 ? "" : "s"}`;
+  if (!tip?.secs_per_block) return blocks;
+  const s = n * tip.secs_per_block;
+  const t = s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} days`;
+  return `${blocks} (≈ ${t} at the current pace)`;
 }
 
 export const zec = (zat) => (zat / 1e8).toFixed(8).replace(/0+$/, "").replace(/\.$/, "");

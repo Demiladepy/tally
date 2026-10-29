@@ -1,4 +1,4 @@
-import { load, zec, zip321 } from "./tally.js";
+import { load, zec, zip321, chainTip, blocksLeft } from "./tally.js";
 
 const $ = (id) => document.getElementById(id);
 const short = (h) => `${h.slice(0, 8)}…${h.slice(-6)}`;
@@ -139,6 +139,15 @@ async function loadOffering() {
     setState(log.result ? "Cleared" : "Closed · clearing", "wait");
     return blockTicket("The order window has closed. See the clearing report.");
   }
+  // Past the close height, the window is over even if the seller hasn't
+  // frozen the log yet. The desk reads the height from a lightwalletd server.
+  const tip = await chainTip();
+  if (tip && tip.height >= m.close_height) {
+    setState("Order window ended", "wait");
+    $("countdown").textContent = `Ended at block ${m.close_height.toLocaleString("en-US")} · chain is at ${tip.height.toLocaleString("en-US")}. Waiting for the seller to close and the committee to clear.`;
+    return blockTicket("The order window has ended.");
+  }
+  if (tip) $("countdown").textContent = `Closes in ${blocksLeft(m.close_height - tip.height, tip)} · chain at block ${tip.height.toLocaleString("en-US")}`;
   setState("Open for orders");
 
   // Ticket: the limit is a ladder level.
@@ -248,6 +257,9 @@ $("bond-btn").addEventListener("click", () => {
   $("escrow-addr").textContent = manifest.escrow_ua;
   $("uri").textContent = uri;
   $("open-wallet").href = uri;
+  // Scan-to-pay: the QR is drawn by our own WebAssembly, no third-party code.
+  const svg = new DOMParser().parseFromString(tally.qrSvg(uri), "image/svg+xml").documentElement;
+  $("qr").replaceChildren(svg);
   $("dep-form").hidden = true;
   $("bond-out").hidden = false;
 });

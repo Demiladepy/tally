@@ -17,6 +17,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = "0.4"
 rand_core = { version = "0.6", features = ["getrandom"] }
+# Only for reading the chain tip from a lightwalletd server (--lightwalletd).
+zcash_client_backend = { version = "0.25.0", default-features = false, features = ["lightwalletd-tonic-transport", "lightwalletd-tonic-tls-webpki-roots"] }
+tonic = { version = "0.14", features = ["transport", "tls-ring", "tls-webpki-roots"] }
 
 [dev-dependencies]
 rand_chacha = "0.3"

@@ -1,4 +1,4 @@
-import { zec } from "./tally.js";
+import { zec, chainTip, blocksLeft } from "./tally.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, attrs = {}, ...kids) => {
@@ -18,9 +18,15 @@ function paintCipher(log) {
   $("cipher").textContent = s.slice(0, 24000);
 }
 
-function row(a, log) {
+function row(a, log, tip) {
   const L = log?.manifest?.ladder_zat;
-  const status = a.cleared ? el("span", { class: "pill" }, "Cleared") : a.closed ? el("span", { class: "pill wait" }, "Clearing") : el("span", { class: "pill open" }, "Open");
+  const close = log?.manifest?.close_height;
+  const ended = !a.closed && tip && close && tip.height >= close;
+  const status = a.cleared ? el("span", { class: "pill" }, "Cleared")
+    : a.closed ? el("span", { class: "pill wait" }, "Clearing")
+    : ended ? el("span", { class: "pill wait" }, "Window ended")
+    : el("span", { class: "pill open" }, "Open");
+  const when = !a.closed && tip && close && !ended ? el("small", { class: "when" }, `closes in ${blocksLeft(close - tip.height, tip)}`) : "";
   const action = a.closed
     ? el("a", { class: "btn sm", href: `verify.html?auction=${a.auction_id}` }, "Clearing report")
     : el("a", { class: "btn sm cta", href: `bid.html?auction=${a.auction_id}` }, "Place order");
@@ -31,7 +37,7 @@ function row(a, log) {
     el("td", { class: "r num col-hide" }, L ? `${zec(L[0])} – ${zec(L[L.length - 1])}` : "—"),
     el("td", { class: "r num col-hide" }, log ? zec(log.manifest.bond_zat) : "—"),
     el("td", { class: "r num" }, String(a.ballots)),
-    el("td", {}, status),
+    el("td", {}, status, when),
     el("td", { class: "r" }, action));
 }
 
@@ -49,6 +55,7 @@ function completedRow() {
 }
 
 try {
+  const tipP = chainTip();
   const auctions = (await (await fetch("v1/auctions")).json()).reverse();
   const logs = await Promise.all(auctions.map((a) => fetch(`v1/auctions/${a.auction_id}`).then((r) => r.json()).catch(() => null)));
   const tbody = $("rows");
@@ -57,7 +64,8 @@ try {
   $("st-open").textContent = String(auctions.filter((a) => !a.closed).length);
   $("st-orders").textContent = String(auctions.reduce((n, a) => n + a.ballots, 0));
   if (!auctions.length) tbody.append(el("tr", {}, el("td", { colspan: "7", class: "empty" }, "No offerings on this desk yet.")));
-  auctions.forEach((a, i) => tbody.append(row(a, logs[i])));
+  const tip = await tipP;
+  auctions.forEach((a, i) => tbody.append(row(a, logs[i], tip)));
   tbody.append(completedRow());
   const withOrders = logs.find((l) => l?.entries?.length);
   if (withOrders) paintCipher(withOrders);

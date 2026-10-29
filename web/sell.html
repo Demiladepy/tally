@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Run an offering · Tally</title>
+  <link rel="preload" href="fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="shared/style.css">
+  <script src="shared/frame.js"></script>
+  <script type="module" src="shared/sell.js"></script>
+</head>
+<body>
+  <header class="top"><div class="wrap">
+    <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
+    <nav aria-label="Main"><a href="./">Offerings</a><a href="orders.html">Orders</a><a href="sell.html" aria-current="page">Sell</a><a href="verify.html">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
+    <span class="net">Zcash testnet · Ironwood</span>
+  </div></header>
+
+  <section class="head"><div class="wrap">
+    <div class="crumbs"><a href="./">Offerings</a> / Sell</div>
+    <div class="head-row">
+      <div>
+        <h1>Run a sealed block sale</h1>
+        <p class="sub">Set the terms, have your committee co-sign them, and open the order book. Your seller key is made in this tab and never leaves it except as a file you save.</p>
+        <p class="countdown" id="chain"></p>
+      </div>
+    </div>
+  </div></section>
+
+  <main class="wrap">
+    <div class="desk">
+      <div>
+        <ol class="steps">
+          <li class="card card-pad" id="st1">
+            <div class="step-head"><span class="dot">1</span><div><h3>Terms</h3><p class="muted small">What you're selling and how it clears.</p></div></div>
+            <div class="grid2">
+              <label class="field wide"><span>Offering name <small>shown to buyers, signed</small></span><input type="text" id="f-title" maxlength="80" placeholder="Genesis Lot 002"></label>
+              <label class="field"><span>Units</span><input type="text" id="f-supply" inputmode="numeric" value="2"></label>
+              <label class="field"><span>Refundable deposit <small>ZEC per order</small></span><input type="text" id="f-bond" inputmode="decimal" value="0.001"></label>
+              <label class="field"><span>Price step <small>ZEC</small></span><input type="text" id="f-step" inputmode="decimal" value="0.001"></label>
+              <label class="field"><span>Price levels <small>1–64</small></span><input type="text" id="f-levels" inputmode="numeric" value="16"></label>
+              <label class="field"><span>Order window <small>blocks</small></span><input type="text" id="f-window" inputmode="numeric" value="2000"></label>
+              <label class="field"><span>Minimum funded orders <small>else void</small></span><input type="text" id="f-min" inputmode="numeric" value="5"></label>
+              <label class="field"><span>Settlement window <small>blocks after close</small></span><input type="text" id="f-settle" inputmode="numeric" value="240"></label>
+            </div>
+          </li>
+
+          <li class="card card-pad" id="st2">
+            <div class="step-head"><span class="dot">2</span><div><h3>Item, escrow and committee</h3><p class="muted small">Public inputs. None of these are secrets.</p></div></div>
+            <label class="field"><span>Collection ID <small>from your mint record</small></span><input type="text" id="f-coll" spellcheck="false" placeholder="64 hex characters, or drop mint.json below"></label>
+            <label class="field"><span>Escrow address <small>unused, Orchard-only · run by someone other than the desk</small></span><input type="text" id="f-escrow" spellcheck="false" placeholder="utest1…"></label>
+            <label class="field"><span>Forfeit address <small>unused, Orchard-only · never the seller's</small></span><input type="text" id="f-forfeit" spellcheck="false" placeholder="utest1…"></label>
+            <div class="drops">
+              <label class="drop small-drop" id="drop-mint"><b>Mint record</b><span id="mint-note">Drop <code>mint.json</code> to fill the collection ID</span><input type="file" id="file-mint" accept=".json,application/json"></label>
+              <label class="drop small-drop" id="drop-comm"><b>Committee</b><span id="comm-note">Drop the public <code>committee.json</code></span><input type="file" id="file-comm" accept=".json,application/json"></label>
+            </div>
+          </li>
+
+          <li class="card card-pad" id="st3">
+            <div class="step-head"><span class="dot">3</span><div><h3>Sign the draft</h3><p class="muted small">The offering ID is the hash of these terms, so a buyer's link pins them exactly.</p></div></div>
+            <button class="btn cta" id="sign-btn" type="button">Sign draft</button>
+            <span class="status" id="sign-status" role="status" aria-live="polite"></span>
+            <div class="inner" id="signed" hidden>
+              <div class="kv" id="draft-kv"></div>
+              <div class="btn-row"><button class="btn sm cta" id="key-btn" type="button">Save seller key</button><button class="btn sm" id="draft-btn" type="button">Save draft for the committee</button></div>
+              <p class="faint small mt8">The seller key closes the order window and signs settlements. Keep it private and backed up. Send only the draft to each member; they run <code>tally-committee endorse</code> and send back a small file.</p>
+            </div>
+          </li>
+
+          <li class="card card-pad" id="st4">
+            <div class="step-head"><span class="dot">4</span><div><h3>Collect co-signatures and publish</h3><p class="muted small">Every member must endorse. Buyers' browsers check each signature before sealing.</p></div></div>
+            <label class="drop small-drop" id="drop-end"><b>Endorsements</b><span>Drop each member's <code>endorse-J.json</code></span><input type="file" id="file-end" accept=".json,application/json" multiple></label>
+            <div id="end-list" class="members-list"></div>
+            <button class="btn cta" id="pub-btn" type="button" disabled>Publish offering</button>
+            <span class="status" id="pub-status" role="status" aria-live="polite"></span>
+          </li>
+        </ol>
+
+        <section class="section mt-lg" aria-labelledby="mg-h">
+          <div class="sec-head"><h2 id="mg-h">Close an order window</h2><span class="muted">Freezes the book so the committee can clear it</span></div>
+          <div class="card card-pad">
+            <label class="drop small-drop" id="drop-key"><b>Seller key</b><span>Drop the <code>tally-seller-key.json</code> you saved when you signed</span><input type="file" id="file-key" accept=".json,application/json"></label>
+            <div class="kv" id="close-kv"></div>
+            <button class="btn" id="close-btn" type="button" disabled>Close order window</button>
+            <span class="status" id="close-status" role="status" aria-live="polite"></span>
+          </div>
+        </section>
+      </div>
+
+      <aside class="card ticket" aria-labelledby="pv-title">
+        <div class="t-head"><h2 id="pv-title">Offering preview</h2><span class="faint mono t-meta">what buyers will see</span></div>
+        <div class="t-body">
+          <b class="pv-name" id="pv-name">Untitled offering</b>
+          <div class="summary">
+            <div><span>Units</span><b id="pv-units">—</b></div>
+            <div><span>Price range</span><b id="pv-range">—</b></div>
+            <div><span>Deposit per order</span><b id="pv-dep">—</b></div>
+            <div><span>Closes</span><b id="pv-close">—</b></div>
+            <div><span>Void below</span><b id="pv-min">—</b></div>
+            <div><span>Committee</span><b id="pv-comm">not set</b></div>
+          </div>
+          <div class="ladder-mini" id="pv-ladder" aria-hidden="true"></div>
+          <div class="lock">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+            <span>You won't see any order's price. At close you learn only the clearing price and which anonymous orders won.</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="foot"><div class="wrap"><span>Tally · sealed-bid block auctions on Zcash</span><span>Signing runs in WebAssembly in this tab. The desk receives only the signed, public terms.</span></div></footer>
+</body>
+</html>

@@ -17,6 +17,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = "0.4"
 rand_chacha = "0.3"
+# Scan-to-pay deposit codes, drawn here so the page loads no third-party code.
+qrcode = { version = "0.14", default-features = false }
 
 [dev-dependencies]
 zcash_address = "0.14"

@@ -18,7 +18,8 @@ use serde_json::{json, Value};
 use tally_crypto::auction::{self, AuctionLog};
 use tally_crypto::ballot::{self, Ballot};
 use tally_crypto::codec;
-use tally_crypto::manifest::{Manifest, Receipt};
+use tally_crypto::manifest::{Close, Committee, Endorsement, Manifest, Receipt, MANIFEST_V2};
+use tally_crypto::schnorr::Signature;
 use tally_zcash::memo::Bond;
 
 thread_local! {
@@ -207,6 +208,133 @@ pub fn verify_receipt(input: &str) -> Result<Value, String> {
     Ok(json!(i.receipt.auction_id == id && i.receipt.verify(&pk)))
 }
 
+#[derive(Deserialize)]
+struct QrIn {
+    text: String,
+}
+
+/// A QR code for a payment request, as a self-contained SVG (one path, no
+/// styles), so a phone wallet can scan the deposit straight off the page.
+pub fn qr_svg(input: &str) -> Result<Value, String> {
+    use qrcode::{Color, EcLevel, QrCode};
+    let i: QrIn = serde_json::from_str(input).map_err(|e| e.to_string())?;
+    let code = QrCode::with_error_correction_level(i.text.as_bytes(), EcLevel::M).map_err(|e| e.to_string())?;
+    let w = code.width();
+    let q = 4; // quiet zone, in modules
+    let mut d = String::new();
+    for (k, c) in code.to_colors().iter().enumerate() {
+        if *c == Color::Dark {
+            d.push_str(&format!("M{} {}h1v1h-1z", k % w + q, k / w + q));
+        }
+    }
+    let n = w + 2 * q;
+    Ok(json!(format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" shape-rendering="crispEdges"><rect width="{n}" height="{n}" fill="#fff"/><path fill="#0b1510" d="{d}"/></svg>"##
+    )))
+}
+
+// ---- seller console ----
+// The seller's signing key is made here, handed back once for the seller to
+// download, and never sent to the desk. These are the same steps as
+// `tally-settle auction-create`, `auction-publish` and `auction-close`.
+
+#[derive(Deserialize)]
+struct DraftIn {
+    title: String,
+    collection_id: String,
+    supply: u64,
+    step_zat: u64,
+    levels: u64,
+    bond_zat: u64,
+    open_height: u32,
+    close_in: u32,
+    settle_window: u32,
+    min_batch: u64,
+    committee: Committee,
+    escrow_ua: String,
+    forfeit_ua: String,
+    seed_hex: String,
+}
+
+/// Draft and sign an offering. Returns the draft for the committee to
+/// endorse and the seller key record (same shape as the CLI's).
+pub fn draft_offering(input: &str) -> Result<Value, String> {
+    let i: DraftIn = serde_json::from_str(input).map_err(|e| e.to_string())?;
+    for (name, ua) in [("escrow", &i.escrow_ua), ("forfeit", &i.forfeit_ua)] {
+        tally_zcash::memo::require_orchard_only_ua(ua).map_err(|_| format!("{name} address must be an unused Orchard-only unified address"))?;
+    }
+    if i.escrow_ua == i.forfeit_ua {
+        return Err("escrow and forfeit addresses must differ".into());
+    }
+    if i.levels == 0 || i.levels > 64 || i.step_zat == 0 {
+        return Err("the price ladder needs 1 to 64 levels and a step above zero".into());
+    }
+    let seed = codec::bytes32_from_hex(&i.seed_hex).map_err(|_| "seed must be 32 bytes of hex".to_string())?;
+    let mut rng = ChaCha20Rng::from_seed(seed);
+    let seller_sk = tally_crypto::random_scalar(&mut rng);
+    let mut m = Manifest {
+        v: MANIFEST_V2,
+        title: i.title,
+        auction_id: [0; 32],
+        collection_id: codec::bytes32_from_hex(&i.collection_id).map_err(|_| "collection ID must be 64 hex characters".to_string())?,
+        supply: i.supply,
+        ladder_zat: (1..=i.levels).map(|k| k * i.step_zat).collect(),
+        bond_zat: i.bond_zat,
+        open_height: i.open_height,
+        close_height: i.open_height + i.close_in,
+        settle_window_blocks: i.settle_window,
+        min_batch: i.min_batch,
+        committee: i.committee,
+        escrow_ua: i.escrow_ua,
+        forfeit_ua: i.forfeit_ua,
+        seller_pk: tally_crypto::g() * seller_sk,
+        sig: Signature { r: tally_crypto::g(), s: tally_crypto::Scalar::from(0u64) },
+        endorsements: vec![],
+    };
+    m.bind_id();
+    m.sign(&seller_sk, &mut rng);
+    m.verify_draft().map_err(|e| e.to_string())?;
+    Ok(json!({
+        "draft": m,
+        "seller_key": { "auction_id": hex::encode(m.auction_id), "seller_sk": codec::scalar_to_hex(&seller_sk) },
+    }))
+}
+
+#[derive(Deserialize)]
+struct PublishIn {
+    draft: Manifest,
+    endorsements: Vec<Endorsement>,
+}
+
+/// Attach the members' endorsements and check the result is publishable.
+pub fn attach_endorsements(input: &str) -> Result<Value, String> {
+    let i: PublishIn = serde_json::from_str(input).map_err(|e| e.to_string())?;
+    let mut m = i.draft;
+    m.endorsements = i.endorsements;
+    m.endorsements.sort_by_key(|e| e.j);
+    m.verify_current().map_err(|e| e.to_string())?;
+    serde_json::to_value(m).map_err(|e| e.to_string())
+}
+
+#[derive(Deserialize)]
+struct CloseIn {
+    seller_sk: String,
+    log: AuctionLog,
+    seed_hex: String,
+}
+
+/// Freeze the log at its current head, signed by the seller.
+pub fn sign_close(input: &str) -> Result<Value, String> {
+    let i: CloseIn = serde_json::from_str(input).map_err(|e| e.to_string())?;
+    let sk = codec::scalar_from_hex(&i.seller_sk).map_err(|_| "seller key is not valid".to_string())?;
+    if tally_crypto::g() * sk != i.log.manifest.seller_pk {
+        return Err("this seller key doesn't belong to this offering".into());
+    }
+    let seed = codec::bytes32_from_hex(&i.seed_hex).map_err(|_| "seed must be 32 bytes of hex".to_string())?;
+    let c = Close::sign(&sk, i.log.manifest.auction_id, i.log.entries.len() as u64, i.log.head(), &mut ChaCha20Rng::from_seed(seed));
+    serde_json::to_value(c).map_err(|e| e.to_string())
+}
+
 macro_rules! export {
     ($name:ident, $f:path) => {
         /// # Safety
@@ -223,3 +351,7 @@ export!(tally_seal_ballot, seal_ballot);
 export!(tally_bond_memo, bond_memo);
 export!(tally_sign_claim, sign_claim);
 export!(tally_verify_receipt, verify_receipt);
+export!(tally_qr_svg, qr_svg);
+export!(tally_draft_offering, draft_offering);
+export!(tally_attach_endorsements, attach_endorsements);
+export!(tally_sign_close, sign_close);

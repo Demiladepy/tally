@@ -14,7 +14,7 @@
 <body>
   <header class="top"><div class="wrap">
     <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
-    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="verify.html" id="report-nav">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
+    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="sell.html">Sell</a><a href="verify.html" id="report-nav">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
     <span class="net">Zcash testnet · Ironwood</span>
   </div></header>
 
@@ -24,6 +24,7 @@
       <div>
         <h1 id="title">Loading offering…</h1>
         <p class="sub" id="subtitle">Uniform-price sealed-bid block sale</p>
+        <p class="countdown" id="countdown" aria-live="polite"></p>
       </div>
       <span class="pill" id="state">—</span>
     </div>
@@ -129,6 +130,10 @@
                 <span class="status" id="bond-status" role="status"></span>
               </div>
               <div class="inner" id="bond-out" hidden>
+                <div class="scan">
+                  <div class="qr" id="qr" role="img" aria-label="Payment request as a QR code"></div>
+                  <p>Scan with Zodl or any shielded Zcash wallet. The amount, the escrow address and the memo that links the deposit to your sealed order are all inside the code.</p>
+                </div>
                 <div class="uri" id="uri"></div>
                 <div class="btn-row"><a class="btn sm cta" id="open-wallet" href="#">Open in wallet</a><button class="btn sm" id="copy-uri" type="button">Copy request</button><button class="btn sm" id="bond-done" type="button">I've paid</button></div>
                 <details class="manual">
