@@ -32,7 +32,7 @@ function row(a, log, tip) {
     : el("a", { class: "btn sm cta", href: `bid.html?auction=${a.auction_id}` }, "Place order");
   return el("tr", {},
     el("td", {}, el("div", { class: "asset" }, el("span", { class: "glyph" }, a.auction_id.slice(0, 2).toUpperCase()),
-      el("div", {}, el("b", {}, log?.manifest?.title || `Block sale ${short(a.auction_id)}`), el("small", {}, `${short(a.auction_id)} · ${a.levels}-level ladder · uniform price`)))),
+      el("div", {}, el("b", {}, log?.manifest?.title || `Block sale ${short(a.auction_id)}`), el("small", {}, `${short(a.auction_id)} · ${a.levels} levels`)))),
     el("td", { class: "r num" }, String(a.supply)),
     el("td", { class: "r num col-hide" }, L ? `${zec(L[0])} – ${zec(L[L.length - 1])}` : "—"),
     el("td", { class: "r num col-hide" }, log ? zec(log.manifest.bond_zat) : "—"),
@@ -45,7 +45,7 @@ function row(a, log, tip) {
 function completedRow() {
   return el("tr", {},
     el("td", {}, el("div", { class: "asset" }, el("span", { class: "glyph" }, "F0"),
-      el("div", {}, el("b", {}, "Testnet Lot · Oct 22"), el("small", {}, "f02153…ddcc · 16-level ladder · 4 of 16 totals opened")))),
+      el("div", {}, el("b", {}, "Testnet Lot · Oct 22"), el("small", {}, "f02153…ddcc · 4 of 16 totals opened")))),
     el("td", { class: "r num" }, "2"),
     el("td", { class: "r num col-hide" }, "0.001 – 0.016"),
     el("td", { class: "r num col-hide" }, "0.001"),

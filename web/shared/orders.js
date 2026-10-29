@@ -33,7 +33,10 @@ async function render() {
   tbody.replaceChildren();
   if (!keys.length) {
     const tr = el("tr");
-    const td = el("td", "empty", "No order keys opened yet.");
+    const td = el("td", "empty");
+    const link = el("a", "", "Browse offerings");
+    link.href = "./";
+    td.append(el("b", "", "No order keys open"), el("p", "muted", "Sealing an order gives you a small key file. Drop it below to follow the order from sealed to funded, cleared and settled. The desk never learns which orders are yours."), link);
     td.colSpan = 6;
     tr.append(td);
     return tbody.append(tr);
@@ -90,3 +93,5 @@ drop.addEventListener("drop", (e) => {
   drop.classList.remove("over");
   open(e.dataTransfer.files);
 });
+
+render();

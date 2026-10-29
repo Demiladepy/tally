@@ -32,6 +32,13 @@ function setState(text, kind) {
   $("state").textContent = text;
   $("state").className = `pill ${kind ?? ""}`;
 }
+// Lifecycle strip: `done` phases are complete, the next one is current.
+function phases(done, label) {
+  [...$("phases").children].forEach((li, i) => {
+    li.className = i < done ? "done" : i === done ? "now" : "";
+    if (i === done && label) li.querySelector("span").textContent = label;
+  });
+}
 function blockTicket(text) {
   $("review-btn").disabled = true;
   status("enter-status", text, "err");
@@ -136,6 +143,8 @@ async function loadOffering() {
   }
 
   if (log.close) {
+    const settled = log.result && log.settlements.length >= (log.result.winners?.length ?? 0);
+    phases(!log.result ? 2 : settled ? 4 : 3);
     setState(log.result ? "Cleared" : "Closed · clearing", "wait");
     return blockTicket("The order window has closed. See the clearing report.");
   }
@@ -143,11 +152,13 @@ async function loadOffering() {
   // frozen the log yet. The desk reads the height from a lightwalletd server.
   const tip = await chainTip();
   if (tip && tip.height >= m.close_height) {
+    phases(1, "Waiting for the seller to close");
     setState("Order window ended", "wait");
     $("countdown").textContent = `Ended at block ${m.close_height.toLocaleString("en-US")} · chain is at ${tip.height.toLocaleString("en-US")}. Waiting for the seller to close and the committee to clear.`;
     return blockTicket("The order window has ended.");
   }
-  if (tip) $("countdown").textContent = `Closes in ${blocksLeft(m.close_height - tip.height, tip)} · chain at block ${tip.height.toLocaleString("en-US")}`;
+  if (tip) $("countdown").textContent = `Chain at block ${tip.height.toLocaleString("en-US")}`;
+  phases(0, tip ? `Closes in ${blocksLeft(m.close_height - tip.height, tip)}` : undefined);
   setState("Open for orders");
 
   // Ticket: the limit is a ladder level.

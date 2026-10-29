@@ -14,7 +14,7 @@
 <body>
   <header class="top"><div class="wrap">
     <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
-    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="sell.html">Sell</a><a href="verify.html">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
+    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="sell.html">Sell</a><a href="verify.html">Reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
     <span class="net">Zcash testnet · Ironwood</span>
   </div></header>
 
@@ -26,6 +26,7 @@
       <p class="lede">Run a block sale where no order is ever opened. Bids are sealed in the buyer's browser, cleared by a threshold committee, and settled atomically in shielded ZEC. Every clearing is publicly verifiable.</p>
       <div class="actions">
         <a class="btn cta" href="#offerings">View offerings <span class="arrow" aria-hidden="true">↓</span></a>
+        <a class="btn ghost-dark" href="sell.html">Run an offering</a>
         <a class="btn ghost-dark" href="verify.html?sample=testnet-2026-10-22">Audit a clearing report</a>
       </div>
       <div class="stats" aria-label="Desk statistics">
@@ -48,6 +49,40 @@
       </div>
     </section>
 
+    <section class="section" aria-labelledby="proof-h">
+      <div class="sec-head"><h2 id="proof-h">Proven on Zcash, not promised</h2><span class="muted">Every claim below links to its evidence</span></div>
+      <div class="proof">
+        <a class="card proof-card" href="verify.html?sample=testnet-2026-10-22">
+          <span class="k">Public testnet clearing</span><b>0.012 ZEC</b>
+          <p>Five sealed orders, one clearing price, two winners settled atomically in shielded Ironwood transactions. Only 4 of 16 totals were ever opened.</p>
+          <span class="go">Re-run the 10 checks in your browser →</span></a>
+        <a class="card proof-card" href="https://github.com/Demiladepy/tally/blob/v2/crates/tally-crypto/tests/soak.rs">
+          <span class="k">Randomised order books</span><b>10,008</b>
+          <p>Ties, exact fills, undersubscription, one-unit and 500-order books. Every price and winner matched an independent reference.</p>
+          <span class="go">Read the test →</span></a>
+        <a class="card proof-card" href="https://github.com/Demiladepy/tally/blob/v2/web/test/wasm.test.mjs">
+          <span class="k">Tampering, caught</span><b>9 kinds</b>
+          <p>A lowered price, a swapped winner, a forged total, a hidden decryption, an altered or dropped order, a forged settlement: each one turns the report red.</p>
+          <span class="go">See the tests →</span></a>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="cmp-h">
+      <div class="sec-head"><h2 id="cmp-h">How block sales work today, and what changes</h2></div>
+      <div class="card table-wrap">
+        <table class="cmp">
+          <thead><tr><th></th><th>OTC / RFQ</th><th>On-chain auction</th><th>Dark pool</th><th class="us">Tally</th></tr></thead>
+          <tbody>
+            <tr><td>Bids hidden from the market</td><td><i class="part">Partly</i></td><td><i class="no">No</i></td><td><i class="yes">Yes</i></td><td class="us"><i class="yes">Yes</i></td></tr>
+            <tr><td>Hidden from the operator</td><td><i class="no">No</i></td><td><i class="no">No</i></td><td><i class="no">No</i></td><td class="us"><i class="yes">Yes</i></td></tr>
+            <tr><td>Anyone can prove the price</td><td><i class="no">No</i></td><td><i class="yes">Yes</i></td><td><i class="no">No</i></td><td class="us"><i class="yes">Yes</i></td></tr>
+            <tr><td>One price for every winner</td><td><i class="no">No</i></td><td><i class="part">Depends</i></td><td><i class="part">Depends</i></td><td class="us"><i class="yes">Yes</i></td></tr>
+            <tr><td>Settlement</td><td>Bilateral, on trust</td><td>Public</td><td>Operator's books</td><td class="us">Atomic, shielded</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="section" aria-labelledby="how-h">
       <div class="sec-head"><h2 id="how-h">How a sealed block auction works</h2><span class="muted">Same steps as any primary allocation. None of the leakage.</span></div>
       <div class="steps4">
@@ -56,6 +91,15 @@
         <div class="card"><span class="n">03</span><h3>Single clearing price</h3><p>At close, a 2-of-3 committee opens only the aggregate totals a binary search needs. Everyone who clears pays the same price.</p></div>
         <div class="card"><span class="n">04</span><h3>Atomic settlement</h3><p>Each allocation settles delivery-versus-payment in one Ironwood transaction. Deposits are returned.</p></div>
       </div>
+    </section>
+
+    <section class="section seller-band" aria-labelledby="sell-h">
+      <div>
+        <span class="k">For sellers</span>
+        <h2 id="sell-h">Run your own sealed sale from the browser</h2>
+        <p>Set the terms, have a three-member committee co-sign them, publish, and close the book when the window ends. Your seller key is created in your tab and never sent anywhere.</p>
+      </div>
+      <a class="btn cta" href="sell.html">Open the seller console</a>
     </section>
 
     <section class="section" aria-labelledby="why-h">

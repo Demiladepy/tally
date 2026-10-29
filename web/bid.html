@@ -14,7 +14,7 @@
 <body>
   <header class="top"><div class="wrap">
     <a class="logo" href="./"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>tally</a>
-    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="sell.html">Sell</a><a href="verify.html" id="report-nav">Clearing reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
+    <nav aria-label="Main"><a href="./" aria-current="page">Offerings</a><a href="orders.html">Orders</a><a href="sell.html">Sell</a><a href="verify.html" id="report-nav">Reports</a><a href="https://github.com/Demiladepy/tally">Docs</a></nav>
     <span class="net">Zcash testnet · Ironwood</span>
   </div></header>
 
@@ -34,6 +34,12 @@
       <div><div class="k">Refundable deposit</div><div class="v" id="k-dep">—</div></div>
       <div><div class="k">Sealed orders</div><div class="v" id="k-orders">—</div></div>
     </div>
+    <ol class="phases" id="phases" aria-label="Sale progress">
+      <li><b>Order window</b><span>Sealed orders and deposits</span></li>
+      <li><b>Closed</b><span>Seller freezes the book</span></li>
+      <li><b>Cleared</b><span>Committee opens only totals</span></li>
+      <li><b>Settled</b><span>Atomic, shielded delivery</span></li>
+    </ol>
   </div></section>
 
   <main class="wrap">
